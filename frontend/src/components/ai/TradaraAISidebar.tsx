@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // FILE: src/components/ai/TradaraAISidebar.tsx
 // ==========================================
 
@@ -237,7 +237,7 @@ const renderFormattedMessage = (text: string) => {
     }
 
     const isBullet =
-      trimmed.startsWith('•') ||
+      trimmed.startsWith('â€¢') ||
       trimmed.startsWith('* ') ||
       trimmed.startsWith('- ') ||
       /^\d+\.\s/.test(trimmed);
@@ -247,7 +247,7 @@ const renderFormattedMessage = (text: string) => {
 
       const cleanedLine = numbered
         ? trimmed.replace(/^\d+\.\s*/, '')
-        : trimmed.replace(/^[•*\-]\s*/, '');
+        : trimmed.replace(/^[â€¢*\-]\s*/, '');
 
       elements.push(
         <div
@@ -257,7 +257,7 @@ const renderFormattedMessage = (text: string) => {
           <span className="text-blue-400 font-bold select-none min-w-[12px]">
             {numbered
               ? trimmed.match(/^\d+/)?.[0]
-              : '•'}
+              : 'â€¢'}
           </span>
 
           <span className="flex-1">
@@ -425,11 +425,11 @@ export const TradaraAISidebar: React.FC<
           ? `Hello! I'm Tradara AI. I can help you understand, compare, and negotiate "${initialContext.productName}"${
               initialContext.price
                 ? `, currently listed at ${
-                    initialContext.currency || '₦'
+                    initialContext.currency || 'â‚¦'
                   }${initialContext.price}`
                 : ''
             }. You can also ask me general questions, technical questions, math, coding, research-style questions, or anything else you need help with.`
-          : `Hello! I'm Tradara AI. Ask me anything — general questions, coding, mathematics, business, product research, marketplace questions, or instructions you want me to work through.`,
+          : `Hello! I'm Tradara AI. Ask me anything â€” general questions, coding, mathematics, business, product research, marketplace questions, or instructions you want me to work through.`,
         timestamp: new Date().toLocaleTimeString([], {
           hour: '2-digit',
           minute: '2-digit'
@@ -721,7 +721,7 @@ export const TradaraAISidebar: React.FC<
           : undefined,
       currency:
         initialContext?.currency ||
-        '₦',
+        'â‚¦',
       category:
         initialContext?.category,
       description:
@@ -908,31 +908,6 @@ export const TradaraAISidebar: React.FC<
             }
           }
 
-          if (
-            parsed.type === 'text' &&
-            parsed.content
-          ) {
-            accumulatedText +=
-              parsed.content;
-
-            setMessages((prev) =>
-              prev.map(
-                (message) =>
-                  message.id ===
-                  assistantMessageId
-                    ? {
-                        ...message,
-                        text:
-                          accumulatedText,
-                        isStreaming:
-                          true,
-                        isError:
-                          false
-                      }
-                    : message
-              )
-            );
-          }
 
           if (parsed.done) {
             finalData =
@@ -1418,7 +1393,7 @@ export const TradaraAISidebar: React.FC<
       {
         id: `m-${Date.now()}`,
         sender: 'ai',
-        text: `New conversation started. I'm ready — ask me anything or give me an instruction.`,
+        text: `New conversation started. I'm ready â€” ask me anything or give me an instruction.`,
         timestamp:
           now.toLocaleTimeString(
             [],
@@ -2152,7 +2127,7 @@ export const TradaraAISidebar: React.FC<
                 <p className="text-[10px] text-slate-400 truncate">
                   {connectionLabel}
                   {activeThread?.title
-                    ? ` • ${activeThread.title}`
+                    ? ` â€¢ ${activeThread.title}`
                     : ''}
                 </p>
               </div>
@@ -2720,7 +2695,7 @@ export const TradaraAISidebar: React.FC<
               <div className="flex items-center justify-between mt-2 px-1 text-[10px] text-slate-500">
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  Ctrl/⌘ + K to focus
+                  Ctrl/âŒ˜ + K to focus
                 </span>
 
                 <span className="flex items-center gap-1">
