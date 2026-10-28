@@ -630,6 +630,45 @@ function hasSuccessfulResultForTool(
   );
 }
 
+
+function findSuccessfulResultForToolCall(
+  toolCalls: AgentToolCall[],
+  toolResults: AgentToolResult[],
+  toolName: string,
+  args: Record<string, any>
+): AgentToolResult | undefined {
+  const serializedArgs =
+    safeJsonStringify(
+      normalizeToolArguments(args)
+    );
+
+  return toolResults.find(
+    (result) => {
+      if (
+        result.name !== toolName ||
+        !result.success
+      ) {
+        return false;
+      }
+
+      const previousCall =
+        toolCalls.find(
+          (call) =>
+            call.id === result.callId
+        );
+
+      return Boolean(
+        previousCall &&
+        previousCall.name === toolName &&
+        safeJsonStringify(
+          normalizeToolArguments(
+            previousCall.args
+          )
+        ) === serializedArgs
+      );
+    }
+  );
+}
 function hasRecentFailure(
   toolResults: AgentToolResult[],
   toolName: string,
@@ -1025,6 +1064,53 @@ async function executeModelToolCalls(
         metadata: {
           callId,
           repeatedFailureBlocked:
+            true,
+        },
+      });
+
+      continue;
+    }
+
+    /*
+     * Prevent repeated execution of an identical
+     * tool call that has already succeeded.
+     */
+    const previousSuccessfulResult =
+      findSuccessfulResultForToolCall(
+        toolCalls,
+        toolResults,
+        toolName,
+        args
+      );
+
+    if (previousSuccessfulResult) {
+      const skippedResult:
+        AgentToolResult = {
+        callId,
+        name: toolName,
+        success: false,
+        result: previousSuccessfulResult.result,
+        error:
+          'This exact tool call already succeeded with these arguments during this agent run. Reuse the existing result or choose a different operation.',
+        durationMs: 0,
+      };
+
+      toolResults.push(
+        skippedResult
+      );
+
+      emit(onEvent, {
+        type: 'tool_result',
+        requestId,
+        timestamp: now(),
+        status: 'executing',
+        intent: route.intent,
+        agent: route.agent,
+        toolResult:
+          skippedResult,
+        metadata: {
+          callId,
+          repeatedSuccessfulCallBlocked:
             true,
         },
       });
@@ -2113,7 +2199,7 @@ export async function executeAgent(
       toolResults
     );
 
-  if (generatedFinalContent) {
+  if (generatedFinalContent && !finalContent.trim()) {
     finalContent = generatedFinalContent;
   }
 
