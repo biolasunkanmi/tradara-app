@@ -1,11 +1,16 @@
-import { User } from "@prisma/client";
+import type { UserRole } from "../ai/tools/types";
 
 declare global {
   namespace Express {
     interface Request {
-      // Logic: By setting 'user' to the 'User' type from Prisma, 
-      // you get full autocomplete for id, email, and any other fields.
-      user: User; 
+      user?: {
+        id: string;
+        role: UserRole;
+        storeId?: string;
+        permissions?: string[];
+        email?: string;
+        name?: string;
+      };
     }
   }
 }

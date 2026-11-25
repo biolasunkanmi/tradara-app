@@ -26,6 +26,23 @@ import {
 } from './toolRegistry';
 
 import { AiSalesService } from '../../services/aiSalesService';
+import {
+  consumeApproval,
+  issueApproval,
+} from './approvalStore';
+import {
+  createTaskState,
+  updateTaskState,
+  claimAgentStep,
+  renewAgentStepLease,
+  releaseAgentStep,
+} from './taskStateStore';
+import {
+  appendAgentEvents,
+  completeAgentExecution,
+  markAgentExecutionUncertain,
+  startAgentExecution,
+} from './agentPersistence';
 
 const DEFAULT_OPTIONS: Required<AgentRuntimeOptions> = {
   maxSteps: 8,
@@ -37,6 +54,7 @@ const DEFAULT_OPTIONS: Required<AgentRuntimeOptions> = {
   executeActions: false,
   allowParallelTools: false,
   toolTimeoutMs: 30000,
+  maxRetriesPerTool: 1,
   maxHistoryMessages: 12,
 };
 
@@ -50,6 +68,7 @@ type PendingAction = {
   toolName: string;
   params: Record<string, any>;
   reason: string;
+  approvalToken?: string;
 };
 
 type ModelToolDefinition = {
@@ -324,6 +343,8 @@ function createInitialPlan(
     intent: route.intent,
     agent: route.agent,
     steps,
+    createdAt: now(),
+    updatedAt: now(),
   };
 }
 
@@ -424,6 +445,11 @@ function normalizePendingAction(
     reason:
       pendingToolDetails.reason ||
       'This action requires explicit user approval before execution.',
+
+    approvalToken:
+      typeof pendingToolDetails.approvalToken === 'string'
+        ? pendingToolDetails.approvalToken
+        : undefined,
   };
 }
 
@@ -681,9 +707,20 @@ function hasRecentFailure(
     (result) =>
       result.name === toolName &&
       !result.success &&
-      safeJsonStringify(
-        result.result
-      ) === serializedArgs
+      safeJsonStringify(result.metadata?.toolArgs) === serializedArgs
+  );
+}
+
+function isRecoverableToolError(result: AgentToolResult): boolean {
+  const error = (result.error || '').toLowerCase();
+  return (
+    error.includes('timed out') ||
+    error.includes('timeout') ||
+    error.includes('temporarily') ||
+    error.includes('try again') ||
+    error.includes('unavailable') ||
+    error.includes('network') ||
+    error.includes('gateway')
   );
 }
 
@@ -715,17 +752,62 @@ function updatePlanAfterToolExecution(
         step.id === 'verify'
     );
 
+  const latestResult = toolResults[toolResults.length - 1];
+  const latestCall = toolCalls[toolCalls.length - 1];
+  const executionStep = gatherStep || solveStep;
+
+  if (executionStep && latestResult) {
+    executionStep.tool = latestResult.name;
+    executionStep.input = latestCall?.args;
+    executionStep.startedAt =
+    executionStep.startedAt || now();
+    executionStep.completedAt = now();
+    executionStep.result = latestResult.result;
+    executionStep.retryCount = toolResults.filter(
+    (result) =>
+      result.name === latestResult.name &&
+      !result.success
+    ).length;
+    if (!latestResult.success) {
+    const errorText = (latestResult.error || '').toLowerCase();
+    const kind =
+      errorText.includes('approval') || errorText.includes('confirm')
+        ? 'approval'
+        : errorText.includes('permission') || errorText.includes('access denied')
+          ? 'permission'
+          : errorText.includes('timed out')
+            ? 'timeout'
+            : 'recoverable';
+    executionStep.status =
+      kind === 'approval' ? 'waiting_approval' : 'failed';
+    executionStep.error = latestResult.error;
+    executionStep.errorDetails = {
+      kind,
+      message: latestResult.error || 'Tool execution failed.',
+    };
+    } else {
+    executionStep.status = 'completed';
+    executionStep.error = undefined;
+    executionStep.errorDetails = undefined;
+    }
+  }
+
   if (
     gatherStep &&
     toolCalls.length > 0
   ) {
-    gatherStep.status =
-      toolResults.some(
-        (result) =>
-          !result.success
-      )
+    const latestResultNeedsApproval =
+      Boolean(
+        latestResult &&
+        !latestResult.success &&
+        /approval|confirm/i.test(latestResult.error || '')
+      );
+    gatherStep.status = latestResultNeedsApproval
+      ? 'waiting_approval'
+      : toolResults.some((result) => result.success)
         ? 'completed'
-        : 'completed';
+        : 'failed';
+    gatherStep.completedAt = gatherStep.completedAt || now();
   }
 
   if (
@@ -755,40 +837,50 @@ function updatePlanAfterToolExecution(
   return {
     ...plan,
     steps: updatedSteps,
+    updatedAt: now(),
   };
 }
 
 async function executeSingleAgentTool(
+  callId: string,
   toolName: string,
   args: Record<string, any>,
   context: AgentContext,
   requestId: string,
   executeActions: boolean,
-  approved: boolean
+  approved: boolean,
+  timeoutMs = DEFAULT_OPTIONS.toolTimeoutMs
 ): Promise<{
   result: AgentToolResult;
   pendingAction?: PendingAction;
 }> {
-  const callId =
-    createToolCallId(toolName);
-
   const startedAt = Date.now();
 
   try {
-    const rawResult =
-      await executeAgentTool(
-        toolName,
-        args,
-        buildToolExecutionContext(
-          context,
-          requestId,
-          approved
-        ),
-        {
-          executeActions,
-          approved,
-        }
-      );
+    const executionPromise = executeAgentTool(
+      toolName,
+      args,
+      buildToolExecutionContext(
+        context,
+        requestId,
+        approved
+      ),
+      {
+        executeActions,
+        approved,
+      }
+    );
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const rawResult = await Promise.race([
+      executionPromise,
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`Tool '${toolName}' timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }),
+    ]).finally(() => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    });
 
     /*
      * executeAgentTool can return a structured
@@ -812,6 +904,16 @@ async function executeSingleAgentTool(
         reason:
           structuredResult.error ||
           'This action requires explicit user approval before execution.',
+        approvalToken: await issueApproval({
+          taskId: context.taskId,
+          userId: context.user?.userId,
+          sessionId: context.conversationId,
+          toolName,
+          params: args,
+          reason:
+            structuredResult.error ||
+            'This action requires explicit user approval before execution.',
+        }),
       };
 
       return {
@@ -861,6 +963,9 @@ async function executeSingleAgentTool(
         toolName,
         args
       );
+    const uncertain =
+      error instanceof Error &&
+      /timed out/i.test(error.message);
 
     return {
       result: {
@@ -870,6 +975,12 @@ async function executeSingleAgentTool(
         error: errorMessage,
         durationMs:
           Date.now() - startedAt,
+        metadata: uncertain
+          ? {
+              uncertainOutcome: true,
+              reason: 'The external operation outcome is unknown after interruption or timeout.',
+            }
+          : undefined,
       },
       pendingAction,
     };
@@ -884,6 +995,7 @@ async function executeModelToolCalls(
   options: Required<AgentRuntimeOptions>,
   toolCalls: AgentToolCall[],
   toolResults: AgentToolResult[],
+  flushEvents: () => Promise<void>,
   onEvent:
     | ((event: AgentEvent) => void)
     | undefined
@@ -892,6 +1004,10 @@ async function executeModelToolCalls(
   executedCount: number;
 }> {
   let executedCount = 0;
+  const taskId = context.taskId;
+  if (!taskId) {
+    throw new Error('Agent task context is required for tool execution.');
+  }
 
   /*
    * We execute model-selected tools sequentially by default.
@@ -948,6 +1064,13 @@ async function executeModelToolCalls(
         durationMs: 0,
       };
 
+      await startAgentExecution({
+        taskId,
+        requestId,
+        userId: context.user?.userId,
+        toolCall: failedToolCall,
+        startedAt: new Date(),
+      });
       toolCalls.push(
         failedToolCall
       );
@@ -955,6 +1078,13 @@ async function executeModelToolCalls(
       toolResults.push(
         failedToolResult
       );
+      await completeAgentExecution({
+        taskId,
+        requestId,
+        callId,
+        attempt: 0,
+        result: failedToolResult,
+      });
 
       emit(onEvent, {
         type: 'tool_start',
@@ -984,6 +1114,7 @@ async function executeModelToolCalls(
           modelSelected: true,
         },
       });
+      await flushEvents();
 
       continue;
     }
@@ -1004,6 +1135,13 @@ async function executeModelToolCalls(
     toolCalls.push(
       toolCall
     );
+    await startAgentExecution({
+      taskId,
+      requestId,
+      userId: context.user?.userId,
+      toolCall,
+      startedAt: new Date(),
+    });
 
     emit(onEvent, {
       type: 'tool_start',
@@ -1026,6 +1164,7 @@ async function executeModelToolCalls(
           ),
       },
     });
+    await flushEvents();
 
     /*
      * Prevent accidental infinite repetition
@@ -1051,6 +1190,13 @@ async function executeModelToolCalls(
       toolResults.push(
         skippedResult
       );
+      await completeAgentExecution({
+        taskId,
+        requestId,
+        callId,
+        attempt: 0,
+        result: skippedResult,
+      });
 
       emit(onEvent, {
         type: 'tool_result',
@@ -1067,6 +1213,7 @@ async function executeModelToolCalls(
             true,
         },
       });
+      await flushEvents();
 
       continue;
     }
@@ -1098,6 +1245,13 @@ async function executeModelToolCalls(
       toolResults.push(
         skippedResult
       );
+      await completeAgentExecution({
+        taskId,
+        requestId,
+        callId,
+        attempt: 0,
+        result: skippedResult,
+      });
 
       emit(onEvent, {
         type: 'tool_result',
@@ -1114,6 +1268,7 @@ async function executeModelToolCalls(
             true,
         },
       });
+      await flushEvents();
 
       continue;
     }
@@ -1136,16 +1291,41 @@ async function executeModelToolCalls(
     const approvedAction =
       context.metadata?.approvedAction;
 
-    const approvedActionMatches =
-      approvedAction &&
-      approvedAction.toolName === toolName &&
+    const approvedActionMatchesRequest =
+      approvedAction?.toolName === toolName &&
       safeJsonStringify(
         normalizeToolArguments(approvedAction.params)
       ) === safeJsonStringify(args);
 
+    const approvalValidation =
+      options.executeActions === true &&
+      approvedAction &&
+      approvedActionMatchesRequest
+        ? await consumeApproval({
+            token: approvedAction.approvalToken,
+            userId: context.user?.userId,
+            sessionId: context.conversationId,
+            toolName,
+            params: args,
+          })
+        : { valid: false };
+
+    const approvedActionMatches =
+      approvalValidation.valid;
+
     const approved =
       Boolean(context.metadata?.approved) ||
       Boolean(approvedActionMatches);
+
+    if (approvalValidation.valid) {
+      await updateTaskState(taskId, context.user?.userId, {
+        approvalState: 'consumed',
+      });
+      context.metadata = {
+        ...(context.metadata || {}),
+        approvalConsumed: true,
+      };
+    }
 
     if (
       approvalRequired &&
@@ -1157,6 +1337,15 @@ async function executeModelToolCalls(
         params: args,
         reason:
           'This action requires explicit user approval before execution.',
+        approvalToken: await issueApproval({
+          taskId,
+          userId: context.user?.userId,
+          sessionId: context.conversationId,
+          toolName,
+          params: args,
+          reason:
+            'This action requires explicit user approval before execution.',
+        }),
       };
 
       const approvalResult:
@@ -1172,6 +1361,14 @@ async function executeModelToolCalls(
       toolResults.push(
         approvalResult
       );
+      await completeAgentExecution({
+        taskId,
+        requestId,
+        callId,
+        attempt: 0,
+        result: approvalResult,
+        status: 'waiting_approval',
+      });
 
       emit(onEvent, {
         type: 'tool_result',
@@ -1188,6 +1385,7 @@ async function executeModelToolCalls(
             true,
         },
       });
+      await flushEvents();
 
       return {
         pendingAction,
@@ -1195,19 +1393,96 @@ async function executeModelToolCalls(
       };
     }
 
-    const execution =
-      await executeSingleAgentTool(
+    let execution = await executeSingleAgentTool(
+      callId,
+      toolName,
+      args,
+      context,
+      requestId,
+      options.executeActions,
+      approved,
+      options.toolTimeoutMs
+    );
+    let retryAttempt = 0;
+
+    while (
+      !execution.pendingAction &&
+      !execution.result.success &&
+      execution.result.metadata?.uncertainOutcome !== true &&
+      tool.retrySafe === true &&
+      isRecoverableToolError(execution.result) &&
+      retryAttempt < options.maxRetriesPerTool
+    ) {
+      toolResults.push({
+        ...execution.result,
+        metadata: {
+          ...(execution.result.metadata || {}),
+          toolArgs: args,
+          retryAttempt,
+          retryable: true,
+        },
+      });
+      await completeAgentExecution({
+        taskId,
+        requestId,
+        callId,
+        attempt: retryAttempt,
+        result: toolResults[toolResults.length - 1],
+      });
+      emit(onEvent, {
+        type: 'tool_result',
+        requestId,
+        timestamp: now(),
+        status: 'executing',
+        intent: route.intent,
+        agent: route.agent,
+        toolResult: toolResults[toolResults.length - 1],
+        metadata: {
+          callId,
+          modelSelected: true,
+          retryAttempt,
+          retrying: true,
+        },
+      });
+      await flushEvents();
+      retryAttempt += 1;
+      await startAgentExecution({
+        taskId,
+        requestId,
+        userId: context.user?.userId,
+        toolCall,
+        startedAt: new Date(),
+        attempt: retryAttempt,
+      });
+      execution = await executeSingleAgentTool(
+        callId,
         toolName,
         args,
         context,
         requestId,
         options.executeActions,
-        approved
+        approved,
+        options.toolTimeoutMs
       );
+    }
 
-    toolResults.push(
-      execution.result
-    );
+    toolResults.push({
+      ...execution.result,
+      metadata: {
+        ...(execution.result.metadata || {}),
+        toolArgs: args,
+        retryAttempt,
+        retryable: tool.retrySafe === true,
+      },
+    });
+    await completeAgentExecution({
+      taskId,
+      requestId,
+      callId,
+      attempt: retryAttempt,
+      result: toolResults[toolResults.length - 1],
+      status: execution.pendingAction ? 'waiting_approval' : undefined,
+    });
 
     executedCount += 1;
 
@@ -1222,12 +1497,14 @@ async function executeModelToolCalls(
       intent: route.intent,
       agent: route.agent,
       toolResult:
-        execution.result,
+        toolResults[toolResults.length - 1],
       metadata: {
         callId,
         modelSelected: true,
+        retryAttempt,
       },
     });
+    await flushEvents();
 
     if (
       execution.pendingAction
@@ -1541,37 +1818,11 @@ export async function executeAgent(
     },
   };
 
-  emit(onEvent, {
-    type: 'start',
-    requestId,
-    timestamp: now(),
-    status: 'planning',
-  });
-
   const route =
     routeIntent(
       request.message,
       context
     );
-
-  emit(onEvent, {
-    type: 'status',
-    requestId,
-    timestamp: now(),
-    status: 'planning',
-    intent: route.intent,
-    agent: route.agent,
-    metadata: {
-      confidence:
-        route.confidence,
-
-      requiresTools:
-        route.requiresTools,
-
-      requiresPlanning:
-        route.requiresPlanning,
-    },
-  });
 
   const initialPlan =
     createInitialPlan(
@@ -1581,6 +1832,72 @@ export async function executeAgent(
 
   let plan =
     initialPlan;
+
+  const taskId =
+    context.taskId ||
+    request.taskId ||
+    `task_${requestId}`;
+  context.taskId = taskId;
+  await createTaskState({
+    taskId,
+    requestId,
+    conversationId: context.conversationId,
+    userId: context.user?.userId,
+    originalRequest: request.message,
+    plan,
+  });
+
+  const externalOnEvent = onEvent;
+  const pendingEvents: AgentEvent[] = [];
+  onEvent = (event: AgentEvent) => {
+    pendingEvents.push({ ...event, taskId });
+  };
+  const flushEvents = async (): Promise<void> => {
+    if (pendingEvents.length === 0) return;
+    const batch = pendingEvents.splice(0, pendingEvents.length);
+    try {
+      await appendAgentEvents(taskId, batch);
+    } catch (error) {
+      pendingEvents.unshift(...batch);
+      throw error;
+    }
+    for (const event of batch) {
+      try {
+        externalOnEvent?.(event);
+      } catch {
+        // Keep client disconnects from interrupting agent execution.
+      }
+    }
+  };
+
+  emit(onEvent, {
+    type: 'start',
+    requestId,
+    timestamp: now(),
+    status: 'planning',
+  });
+  emit(onEvent, {
+    type: 'status',
+    requestId,
+    timestamp: now(),
+    status: 'planning',
+    intent: route.intent,
+    agent: route.agent,
+    metadata: {
+      confidence: route.confidence,
+      requiresTools: route.requiresTools,
+      requiresPlanning: route.requiresPlanning,
+    },
+  });
+  emit(onEvent, {
+    type: 'task_started',
+    requestId,
+    timestamp: now(),
+    status: 'planning',
+    intent: route.intent,
+    agent: route.agent,
+    metadata: { taskId },
+  });
 
   if (
     options.enablePlanning
@@ -1594,7 +1911,18 @@ export async function executeAgent(
       agent: route.agent,
       plan,
     });
+    emit(onEvent, {
+      type: 'plan_created',
+      requestId,
+      timestamp: now(),
+      status: 'planning',
+      intent: route.intent,
+      agent: route.agent,
+      plan,
+      metadata: { taskId },
+    });
   }
+  await flushEvents();
 
   const toolCalls:
     AgentToolCall[] = [];
@@ -1637,9 +1965,17 @@ export async function executeAgent(
         args: {},
       };
 
+      const executionStartedAt = new Date();
       toolCalls.push(
         toolCall
       );
+      await startAgentExecution({
+        taskId,
+        requestId,
+        userId: context.user?.userId,
+        toolCall,
+        startedAt: executionStartedAt,
+      });
 
       emit(onEvent, {
         type: 'tool_start',
@@ -1655,6 +1991,7 @@ export async function executeAgent(
             true,
         },
       });
+      await flushEvents();
 
       const startedAt =
         Date.now();
@@ -1713,6 +2050,13 @@ export async function executeAgent(
         toolResults.push(
           toolResult
         );
+        await completeAgentExecution({
+          taskId,
+          requestId,
+          callId,
+          attempt: 0,
+          result: toolResult,
+        });
 
         emit(onEvent, {
           type: 'tool_result',
@@ -1750,6 +2094,13 @@ export async function executeAgent(
         toolResults.push(
           toolResult
         );
+        await completeAgentExecution({
+          taskId,
+          requestId,
+          callId,
+          attempt: 0,
+          result: toolResult,
+        });
 
         emit(onEvent, {
           type: 'tool_result',
@@ -1972,9 +2323,17 @@ export async function executeAgent(
         },
       });
 
+      await updateTaskState(taskId, context.user?.userId, {
+        plan,
+        status: 'failed',
+        finalOutcome: errorMessage,
+      });
+      await flushEvents();
+
       return {
         success: false,
         requestId,
+        taskId,
         content:
           finalContent,
         agent: route.agent,
@@ -2060,6 +2419,85 @@ export async function executeAgent(
         remainingToolBudget
       );
 
+    const activePlanStep = plan.steps.find(
+      (candidate) => candidate.status === 'queued'
+    );
+    let activeLeaseOwner: string | undefined;
+    let leaseHeartbeat: ReturnType<typeof setInterval> | undefined;
+    if (activePlanStep) {
+      activeLeaseOwner = `worker_${requestId}_${activePlanStep.id}_${Date.now()}`;
+      const claimed = await claimAgentStep({
+        taskId,
+        stepId: activePlanStep.id,
+        ownerId: activeLeaseOwner,
+        leaseMs: 30000,
+      });
+      if (!claimed) {
+        emit(onEvent, {
+          type: 'warning',
+          requestId,
+          timestamp: now(),
+          status: 'recoverable',
+          intent: route.intent,
+          agent: route.agent,
+          error: 'Another worker owns this step; execution was not started.',
+          metadata: { taskId, stepId: activePlanStep.id, leaseConflict: true },
+        });
+        await updateTaskState(taskId, context.user?.userId, {
+          plan,
+          status: 'queued',
+          finalOutcome: 'This task is recoverable and waiting for an available worker.',
+        });
+        await flushEvents();
+        return {
+          success: false,
+          requestId,
+          taskId,
+          content: 'This task is waiting because another worker owns the active step.',
+          agent: route.agent,
+          intent: route.intent,
+          status: 'failed',
+          plan,
+          toolCalls,
+          toolResults,
+          error: 'Step lease is owned by another worker.',
+          metadata: { taskId, stepId: activePlanStep.id, leaseConflict: true },
+        };
+      }
+      activePlanStep.status = 'executing';
+      activePlanStep.startedAt =
+        activePlanStep.startedAt || now();
+      plan.updatedAt = now();
+      await updateTaskState(taskId, context.user?.userId, {
+        plan,
+        status: 'executing',
+      });
+    }
+
+    emit(onEvent, {
+      type: 'step_started',
+      requestId,
+      timestamp: now(),
+      status: 'executing',
+      intent: route.intent,
+      agent: route.agent,
+      metadata: {
+        taskId,
+        stepId: activePlanStep?.id || 'execute',
+        toolCount: callsToExecute.length,
+      },
+    });
+    if (activePlanStep && activeLeaseOwner) {
+      leaseHeartbeat = setInterval(() => {
+        void renewAgentStepLease({
+          taskId,
+          stepId: activePlanStep.id,
+          ownerId: activeLeaseOwner as string,
+          leaseMs: 30000,
+        });
+      }, 10000);
+    }
+
     const execution =
       await executeModelToolCalls(
         callsToExecute,
@@ -2069,8 +2507,61 @@ export async function executeAgent(
         options,
         toolCalls,
         toolResults,
+        flushEvents,
         onEvent
       );
+
+    if (leaseHeartbeat) {
+      clearInterval(leaseHeartbeat);
+      leaseHeartbeat = undefined;
+    }
+    if (activePlanStep && activeLeaseOwner) {
+      const released = await releaseAgentStep({
+        taskId,
+        stepId: activePlanStep.id,
+        ownerId: activeLeaseOwner,
+        status: execution.pendingAction
+          ? 'queued'
+          : (toolResults.some((result) =>
+              result.metadata?.uncertainOutcome === true
+            )
+            ? 'failed'
+            : 'completed'),
+      });
+      if (!released) {
+        for (const result of toolResults) {
+          await markAgentExecutionUncertain({
+            taskId,
+            requestId,
+            callId: result.callId,
+            attempt: 0,
+            reason: 'Worker lost its step lease before the result was confirmed.',
+            ownerId: activeLeaseOwner,
+          });
+        }
+        emit(onEvent, {
+          type: 'warning',
+          requestId,
+          timestamp: now(),
+          status: 'uncertain',
+          intent: route.intent,
+          agent: route.agent,
+          error: 'The worker lost its step lease; this result will not be confirmed.',
+          metadata: {
+            taskId,
+            stepId: activePlanStep.id,
+            staleWorker: true,
+            uncertainOutcome: true,
+          },
+        });
+        await updateTaskState(taskId, context.user?.userId, {
+          plan,
+          status: 'recoverable',
+          finalOutcome: 'Execution lease expired. No uncertain external side effect was repeated.',
+        });
+        await flushEvents();
+      }
+    }
 
     plan =
       updatePlanAfterToolExecution(
@@ -2078,6 +2569,52 @@ export async function executeAgent(
         toolCalls,
         toolResults
       );
+
+    await updateTaskState(taskId, context.user?.userId, {
+      plan,
+      status: execution.pendingAction ? 'waiting_approval' : 'executing',
+      pendingStepIds: plan.steps
+        .filter((step) => step.status !== 'completed')
+        .map((step) => step.id),
+      completedStepIds: plan.steps
+        .filter((step) => step.status === 'completed')
+        .map((step) => step.id),
+      failedStepIds: plan.steps
+        .filter((step) => step.status === 'failed')
+        .map((step) => step.id),
+      approvalState: execution.pendingAction
+        ? 'pending'
+        : context.metadata?.approvalConsumed
+          ? 'consumed'
+          : 'not_required',
+    });
+    emit(onEvent, {
+      type: execution.pendingAction ? 'task_replanned' : 'plan_updated',
+      requestId,
+      timestamp: now(),
+      status: execution.pendingAction ? 'waiting_approval' : 'executing',
+      intent: route.intent,
+      agent: route.agent,
+      plan,
+      metadata: { taskId, observedToolResults: toolResults.length },
+    });
+    emit(onEvent, {
+      type: toolResults.some((result) => !result.success)
+        ? 'step_failed'
+        : 'step_completed',
+      requestId,
+      timestamp: now(),
+      status: execution.pendingAction ? 'waiting_approval' : 'executing',
+      intent: route.intent,
+      agent: route.agent,
+      plan,
+      metadata: {
+        taskId,
+        stepId: plan.steps.find((candidate) =>
+          candidate.tool === callsToExecute[0]?.name
+        )?.id || 'execute',
+      },
+    });
 
     /*
      * If a tool requires approval, pause the agent
@@ -2107,6 +2644,7 @@ export async function executeAgent(
             pendingAction.toolName,
         },
       });
+      await flushEvents();
 
       const approvalContent =
         finalContent ||
@@ -2115,6 +2653,7 @@ export async function executeAgent(
       return {
         success: true,
         requestId,
+        taskId,
         content:
           approvalContent,
         agent: route.agent,
@@ -2140,6 +2679,7 @@ export async function executeAgent(
             options.executeActions
               ? 'action-enabled'
               : 'approval-gated',
+          taskId,
         },
       };
     }
@@ -2249,6 +2789,12 @@ export async function executeAgent(
         finalModelResult.pendingToolDetails
       );
 
+    await updateTaskState(taskId, context.user?.userId, {
+      plan,
+      status: 'waiting_approval',
+      approvalState: 'pending',
+      finalOutcome: finalContent || undefined,
+    });
     emit(onEvent, {
       type: 'approval_required',
       requestId,
@@ -2261,10 +2807,12 @@ export async function executeAgent(
         true,
       pendingAction,
     });
+    await flushEvents();
 
     return {
       success: true,
       requestId,
+      taskId,
       content:
         finalContent,
       agent: route.agent,
@@ -2469,14 +3017,21 @@ export async function executeAgent(
   // FINAL RESPONSE
   // ==========================================
 
+  const lastToolResult =
+    toolResults[toolResults.length - 1];
+  const unresolvedToolFailure =
+    Boolean(lastToolResult && !lastToolResult.success);
+  const taskSucceeded =
+    !loopTerminatedByLimit &&
+    !unresolvedToolFailure;
+
   const response:
     AgentResponse = {
     success:
-      !loopTerminatedByLimit ||
-      toolResults.length >
-        0,
+      taskSucceeded,
 
     requestId,
+    taskId,
 
     content:
       finalContent,
@@ -2488,7 +3043,7 @@ export async function executeAgent(
       route.intent,
 
     status:
-      'completed',
+      taskSucceeded ? 'completed' : 'failed',
 
     plan,
 
@@ -2568,6 +3123,31 @@ export async function executeAgent(
     verification,
     metadata:
       response.metadata,
+  });
+  emit(onEvent, {
+    type: response.success ? 'task_completed' : 'task_failed',
+    requestId,
+    timestamp: now(),
+    status: response.status,
+    agent: route.agent,
+    intent: route.intent,
+    content: finalContent,
+    metadata: { taskId },
+  });
+  await flushEvents();
+  await updateTaskState(taskId, context.user?.userId, {
+    plan,
+    status: response.success ? 'completed' : 'failed',
+    finalOutcome: finalContent,
+    pendingStepIds: plan.steps
+      .filter((step) => step.status !== 'completed')
+      .map((step) => step.id),
+    completedStepIds: plan.steps
+      .filter((step) => step.status === 'completed')
+      .map((step) => step.id),
+    failedStepIds: plan.steps
+      .filter((step) => step.status === 'failed')
+      .map((step) => step.id),
   });
 
   return response;

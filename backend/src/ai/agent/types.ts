@@ -41,6 +41,8 @@ export type AgentExecutionStatus =
   | 'queued'
   | 'planning'
   | 'executing'
+  | 'recoverable'
+  | 'uncertain'
   | 'verifying'
   | 'completed'
   | 'failed'
@@ -49,10 +51,20 @@ export type AgentExecutionStatus =
 
 export type AgentEventType =
   | 'start'
+  | 'task_started'
+  | 'plan_created'
+  | 'plan_updated'
+  | 'step_started'
+  | 'tool_started'
+  | 'tool_result'
+  | 'step_completed'
+  | 'step_failed'
+  | 'task_replanned'
+  | 'task_completed'
+  | 'task_failed'
   | 'status'
   | 'plan'
   | 'tool_start'
-  | 'tool_result'
   | 'content'
   | 'warning'
   | 'approval_required'
@@ -194,6 +206,7 @@ export interface AgentRequest {
   approvedAction?: {
     toolName: string;
     params: Record<string, any>;
+    approvalToken?: string;
   };
 
   metadata?: Record<string, any>;
@@ -204,12 +217,18 @@ export interface AgentPlanStep {
   description: string;
   agent?: TradaraAgentType;
   tool?: string;
+  input?: Record<string, any>;
   status: AgentExecutionStatus;
   dependsOn?: string[];
+  retryCount?: number;
   startedAt?: string;
   completedAt?: string;
   result?: any;
   error?: string;
+  errorDetails?: {
+    kind: 'recoverable' | 'permanent' | 'permission' | 'approval' | 'timeout' | 'missing_information';
+    message: string;
+  };
   metadata?: Record<string, any>;
 }
 
@@ -222,6 +241,23 @@ export interface AgentPlan {
   createdAt?: string;
   updatedAt?: string;
   metadata?: Record<string, any>;
+}
+
+export interface AgentTaskState {
+  taskId: string;
+  requestId?: string;
+  conversationId?: string;
+  userId?: string;
+  originalRequest: string;
+  plan: AgentPlan;
+  completedStepIds: string[];
+  pendingStepIds: string[];
+  failedStepIds: string[];
+  status: AgentExecutionStatus;
+  approvalState: 'not_required' | 'pending' | 'approved' | 'consumed';
+  finalOutcome?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AgentToolCall {
@@ -267,6 +303,7 @@ export interface AgentResponse {
   success: boolean;
 
   requestId: string;
+  taskId?: string;
 
   content: string;
 
@@ -290,6 +327,7 @@ export interface AgentResponse {
     toolName: string;
     params: Record<string, any>;
     reason: string;
+    approvalToken?: string;
   };
 
   metadata?: Record<string, any>;
@@ -301,6 +339,7 @@ export interface AgentEvent {
   type: AgentEventType;
 
   requestId: string;
+  taskId?: string;
 
   timestamp: string;
 
@@ -326,6 +365,7 @@ export interface AgentEvent {
     toolName: string;
     params: Record<string, any>;
     reason: string;
+    approvalToken?: string;
   };
 
   metadata?: Record<string, any>;
@@ -364,6 +404,10 @@ export interface AgentToolDefinition {
   parameters?: AgentToolParameters;
   returns?: AgentToolParameterSchema;
   supportsParallel?: boolean;
+  retrySafe?: boolean;
+  validateResult?: (
+    result: unknown
+  ) => AgentToolResultValidation;
   timeoutMs?: number;
   enabled?: boolean;
   metadata?: Record<string, any>;
@@ -372,6 +416,13 @@ export interface AgentToolDefinition {
     args: Record<string, any>,
     context: AgentContext
   ) => Promise<any>;
+}
+
+export interface AgentToolResultValidation {
+  valid: boolean;
+  kind?: 'valid' | 'empty' | 'incomplete' | 'malformed';
+  error?: string;
+  details?: Record<string, any>;
 }
 
 export interface AgentRuntimeOptions {
@@ -384,5 +435,6 @@ export interface AgentRuntimeOptions {
   executeActions?: boolean;
   allowParallelTools?: boolean;
   toolTimeoutMs?: number;
+  maxRetriesPerTool?: number;
   maxHistoryMessages?: number;
 }

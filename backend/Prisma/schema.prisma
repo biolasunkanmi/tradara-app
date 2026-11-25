@@ -298,3 +298,101 @@ model OfferRound {
 
   @@map("offer_rounds")
 }
+
+model AgentTask {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId             String   @unique
+  requestId          String
+  userId             String?
+  conversationId     String?
+  version            Int      @default(0)
+  originalRequest    String
+  plan               Json
+  status             String
+  approvalState      String   @default("not_required")
+  completedStepIds   String[]
+  pendingStepIds     String[]
+  failedStepIds      String[]
+  finalOutcome       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([conversationId])
+}
+
+model AgentStep {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId      String
+  stepId      String
+  description String
+  status      String
+  data        Json
+  leaseOwner  String?
+  leaseExpiresAt DateTime?
+  attempt     Int      @default(0)
+  claimedAt   DateTime?
+  heartbeatAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([taskId, stepId])
+  @@index([taskId, status])
+}
+
+model AgentExecution {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId      String
+  requestId   String
+  userId      String?
+  reservationOwner String?
+  leaseExpiresAt DateTime?
+  uncertainReason String?
+  outcomeState String @default("reserved")
+  callId      String
+  attempt     Int      @default(0)
+  toolName    String
+  input       Json
+  result      Json?
+  error       String?
+  status      String
+  startedAt   DateTime
+  completedAt DateTime?
+  durationMs  Int?
+  metadata    Json?
+
+  @@unique([taskId, requestId, callId, attempt])
+  @@index([taskId, startedAt])
+  @@index([userId, startedAt])
+}
+
+model AgentApproval {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  tokenHash   String   @unique
+  taskId      String?
+  userId      String
+  sessionId   String
+  toolName    String
+  params      Json
+  reason      String
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([userId, sessionId, expiresAt])
+}
+
+model AgentEvent {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId    String
+  requestId String
+  sequence  Int      @default(0)
+  eventType String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@unique([taskId, sequence])
+  @@index([requestId])
+}

@@ -14,9 +14,9 @@ import prisma from './lib/prisma'; //   Now using the singleton client
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 app.set('trust proxy', 1); 
-const httpServer = createServer(app);
+export const httpServer = createServer(app);
 
 const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
@@ -104,7 +104,9 @@ app.use((err: any, req: any, res: any, next: any) => {
   });
 });
 
-httpServer.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`\n [BACKEND] Tradara Server running on port ${PORT}.`);
-    console.log(` [PRISMA] Singleton Client recognized.`);
-});
+if (require.main === module) {
+  httpServer.listen(Number(PORT), '0.0.0.0', () => {
+      console.log(`\n [BACKEND] Tradara Server running on port ${PORT}.`);
+      console.log(` [PRISMA] Singleton Client recognized.`);
+  });
+}

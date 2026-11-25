@@ -2,9 +2,15 @@
 // FILE: backend/src/middleware/authMiddleware.ts
 // ==========================================
 
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuthenticatedRequest } from '../ai/tools/types';
+import {
+  guestOwnerId,
+  readCookie,
+  resolveGuestIdentity,
+  GUEST_COOKIE_NAME,
+} from '../ai/agent/guestIdentity';
 
 /**
  * Normalizes decoded JWT payloads or fallbacks into a valid AuthenticatedUser object.
@@ -27,6 +33,16 @@ export const authMiddleware = (req: any, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   if (!token) {
+    const guestToken = readCookie(req, GUEST_COOKIE_NAME);
+    if (guestToken && /^[a-f0-9]{64}$/i.test(guestToken)) {
+      req.user = {
+        id: guestOwnerId(guestToken),
+        role: 'GUEST',
+        permissions: ['READ_ONLY'],
+      };
+      next();
+      return;
+    }
     return res.status(401).json({ message: 'Authentication required' });
   }
 
@@ -49,7 +65,7 @@ export const authMiddleware = (req: any, res: Response, next: NextFunction) => {
  */
 export const authenticateUser = (
   req: AuthenticatedRequest,
-  _res: Response,
+  res: Response,
   next: NextFunction
 ): void => {
   try {
@@ -64,15 +80,17 @@ export const authenticateUser = (
 
       req.user = buildUserContext(decoded);
     } else {
+      const guestId = resolveGuestIdentity(req as Request, res);
       req.user = {
-        id: 'usr_guest_anonymous',
+        id: guestId,
         role: 'GUEST',
         permissions: ['READ_ONLY'],
       };
     }
   } catch (_error) {
+    const guestId = resolveGuestIdentity(req as Request, res);
     req.user = {
-      id: 'usr_guest_anonymous',
+      id: guestId,
       role: 'GUEST',
       permissions: ['READ_ONLY'],
     };

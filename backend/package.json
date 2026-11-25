@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node dist/server.js",
     "build": "npx prisma generate --schema=./Prisma/schema.prisma && tsc",
-    "dev": "npx prisma generate --schema=./Prisma/schema.prisma && nodemon src/server.ts"
+    "dev": "npx prisma generate --schema=./Prisma/schema.prisma && nodemon src/server.ts",
+    "test": "jest --config ./jest.config.cjs --runInBand"
   },
   "dependencies": {
     "@google/genai": "^2.21.0",

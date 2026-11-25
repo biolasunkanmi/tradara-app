@@ -160,6 +160,51 @@ function requiresLegacyApproval(
   return riskLevel === 'EXECUTE';
 }
 
+function validateSearchResult(
+  value: unknown
+): import('./types').AgentToolResultValidation {
+  if (Array.isArray(value)) {
+    return {
+      valid: true,
+      kind: value.length === 0 ? 'empty' : 'valid',
+      details: { itemCount: value.length },
+    };
+  }
+
+  if (!value || typeof value !== 'object') {
+    return {
+      valid: false,
+      kind: 'malformed',
+      error: 'Search tools must return an array or a result object.',
+    };
+  }
+
+  const record = value as Record<string, unknown>;
+  const collection = [
+    record.items,
+    record.products,
+    record.results,
+    record.data,
+  ].find((candidate) => Array.isArray(candidate));
+
+  if (!collection) {
+    return {
+      valid: false,
+      kind: 'incomplete',
+      error: 'Search result is missing its result collection.',
+      details: {
+        requiredFields: ['items', 'products', 'results', 'data'],
+      },
+    };
+  }
+
+  return {
+    valid: true,
+    kind: collection.length === 0 ? 'empty' : 'valid',
+    details: { itemCount: collection.length },
+  };
+}
+
 
 // ==========================================
 // SCHEMA NORMALIZATION
@@ -906,11 +951,48 @@ export async function executeAgentTool(
         name
       );
 
+    const structuredResult =
+      result &&
+      typeof result === 'object' &&
+      'success' in result &&
+      typeof result.success === 'boolean'
+        ? result as {
+            success: boolean;
+            error?: string;
+          }
+        : undefined;
+
+    const validation = tool.validateResult?.(result);
+    if (validation && !validation.valid) {
+      return {
+        callId,
+        name,
+        success: false,
+        result,
+        error:
+          validation.error ||
+          `Tool "${name}" returned ${validation.kind || 'invalid'} output.`,
+        durationMs: Date.now() - startedAt,
+        completedAt: new Date().toISOString(),
+        metadata: {
+          riskLevel: tool.riskLevel,
+          category: tool.category,
+          resultValidation: validation,
+        },
+      };
+    }
+
     return {
       callId,
       name,
-      success: true,
+      success:
+        structuredResult?.success !== false,
       result,
+      error:
+        structuredResult?.success === false
+          ? structuredResult.error ||
+            'Tool execution failed.'
+          : undefined,
       durationMs:
         Date.now() - startedAt,
       completedAt:
@@ -920,6 +1002,9 @@ export async function executeAgentTool(
           tool.riskLevel,
         category:
           tool.category,
+        ...(validation
+          ? { resultValidation: validation }
+          : {}),
       },
     };
   } catch (error: any) {
@@ -1027,6 +1112,14 @@ export function registerMarketplaceTools(): void {
 
       supportsParallel:
         riskLevel !== 'EXECUTE',
+
+      retrySafe:
+        riskLevel === 'READ',
+
+      ...(name === 'searchProducts' ||
+      name === 'search_product_catalog'
+        ? { validateResult: validateSearchResult }
+        : {}),
 
       riskLevel:
         normalizeLegacyRisk(

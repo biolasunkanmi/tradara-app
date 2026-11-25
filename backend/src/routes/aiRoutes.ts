@@ -12,7 +12,10 @@ import {
   getNegotiationHistory,
 } from '../controllers/aiController';
 
-import { authMiddleware } from '../middleware/authMiddleware';
+import {
+  authMiddleware,
+  authenticateUser,
+} from '../middleware/authMiddleware';
 
 import { AiSalesService } from '../services/aiSalesService';
 
@@ -53,6 +56,7 @@ router.use('/agent', agentRoutes);
 // Frontend-compatible AI chat gateway
 router.post(
   '/chat',
+  authenticateUser,
   executeAgentRequest
 );
 
