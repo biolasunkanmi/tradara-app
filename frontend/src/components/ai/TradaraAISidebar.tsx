@@ -85,7 +85,7 @@ export const TradaraAISidebar: React.FC<TradaraAISidebarProps> = ({
         setActiveThreadId(parsed.activeThreadId);
       }
       if (parsed.messagesByThread && typeof parsed.messagesByThread === 'object') {
-        const activeMessages = parsed.messagesByThread[parsed.activeThreadId || activeThreadId];
+        const activeMessages = parsed.messagesByThread[parsed.activeThreadId || 'conv-default-1'];
         if (Array.isArray(activeMessages) && activeMessages.length > 0) {
           setMessages(activeMessages);
         }
@@ -93,7 +93,7 @@ export const TradaraAISidebar: React.FC<TradaraAISidebarProps> = ({
     } catch (error) {
       console.warn('[Tradara AI] Failed to restore local workspace:', error);
     }
-  }, [storageKey, activeThreadId]);
+  }, [storageKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -123,6 +123,27 @@ export const TradaraAISidebar: React.FC<TradaraAISidebarProps> = ({
     const timer = window.setTimeout(() => inputRef.current?.focus(), 150);
     return () => window.clearTimeout(timer);
   }, [isOpen, activeThreadId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   const getUserInitials = () => {
     if (!isAuthenticated || !currentUser) return '';
@@ -168,6 +189,7 @@ export const TradaraAISidebar: React.FC<TradaraAISidebarProps> = ({
       updatedAt: 'Just now'
     };
 
+    setSearchQuery('');
     setThreads((prev) => [newThread, ...prev]);
     setActiveThreadId(newThreadId);
     setMessages([
@@ -365,89 +387,101 @@ export const TradaraAISidebar: React.FC<TradaraAISidebarProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[1000px] bg-[#090b12] text-slate-100 shadow-2xl border-l border-slate-800">
-      <SidebarNavigation
-        activeTab={activeTab}
-        isAuthenticated={isAuthenticated}
-        userInitials={userInitials}
-        userTitle={currentUser?.name || currentUser?.email || 'Guest'}
-        onTabChange={setActiveTab}
-      />
-
-      <div className="flex min-h-0 flex-1 flex-col bg-[#0d1018]">
-        <SidebarHeader
-          connectionState={connectionState}
-          connectionLabel={connectionLabel}
-          threadTitle={threads.find((thread) => thread.id === activeThreadId)?.title}
-          onClose={onClose}
+    <div
+      className="fixed inset-0 z-[110] flex h-screen h-[100dvh] justify-end bg-slate-950/60 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tradara AI workspace"
+        className="flex h-full min-h-0 w-full max-w-[1000px] overflow-hidden border-l border-slate-800 bg-[#090b12] text-slate-100 shadow-2xl"
+      >
+        <SidebarNavigation
+          activeTab={activeTab}
+          isAuthenticated={isAuthenticated}
+          userInitials={userInitials}
+          userTitle={currentUser?.name || currentUser?.email || 'Guest'}
+          onTabChange={setActiveTab}
         />
 
-        {activeTab === 'chat' ? (
-          <>
-            <ThreadSearchBar
-              searchQuery={searchQuery}
-              activeThreadId={activeThreadId}
-              pinnedThreads={pinnedThreads}
-              recentThreads={recentThreads}
-              onSearchChange={setSearchQuery}
-              onNewChat={handleNewChat}
-              onSelectThread={handleSelectThread}
-              onTogglePin={handleTogglePin}
-            />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#0d1018]">
+          <SidebarHeader
+            connectionState={connectionState}
+            connectionLabel={connectionLabel}
+            threadTitle={threads.find((thread) => thread.id === activeThreadId)?.title}
+            onClose={onClose}
+          />
 
-            {errorMessage && <ErrorBanner errorMessage={errorMessage} onDismiss={() => setErrorMessage('')} />}
+          {activeTab === 'chat' ? (
+            <>
+              <ThreadSearchBar
+                searchQuery={searchQuery}
+                activeThreadId={activeThreadId}
+                pinnedThreads={pinnedThreads}
+                recentThreads={recentThreads}
+                onSearchChange={setSearchQuery}
+                onNewChat={handleNewChat}
+                onSelectThread={handleSelectThread}
+                onTogglePin={handleTogglePin}
+              />
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 bg-[#0d1018]">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+              {errorMessage && <ErrorBanner errorMessage={errorMessage} onDismiss={() => setErrorMessage('')} />}
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-3 bg-[#0d1018]">
+                {messages.map((message) => (
                   <div
-                    className={`max-w-[85%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${
-                      message.sender === 'user'
-                        ? 'border-blue-500/40 bg-blue-600/20 text-blue-50'
-                        : message.sender === 'system'
-                          ? 'border-slate-700 bg-slate-900 text-slate-300'
-                          : 'border-slate-800 bg-slate-900 text-slate-100'
-                    }`}
+                    key={message.id}
+                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
-                    {message.isStreaming ? (
-                      <div className="flex items-center gap-2 text-blue-300">
-                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
-                        <span>Thinking…</span>
-                      </div>
-                    ) : (
-                      <div className="prose prose-invert max-w-none text-[12px] leading-relaxed text-slate-100">
-                        {renderFormattedMessage(message.text)}
-                      </div>
-                    )}
-                    <div className="mt-2 text-[10px] text-slate-500">{message.timestamp}</div>
+                    <div
+                      className={`max-w-[85%] rounded-2xl border px-3 py-2 text-sm shadow-sm ${
+                        message.sender === 'user'
+                          ? 'border-blue-500/40 bg-blue-600/20 text-blue-50'
+                          : message.sender === 'system'
+                            ? 'border-slate-700 bg-slate-900 text-slate-300'
+                            : 'border-slate-800 bg-slate-900 text-slate-100'
+                      }`}
+                    >
+                      {message.isStreaming ? (
+                        <div className="flex items-center gap-2 text-blue-300">
+                          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+                          <span>Thinking…</span>
+                        </div>
+                      ) : (
+                        <div className="prose prose-invert max-w-none text-[12px] leading-relaxed text-slate-100">
+                          {renderFormattedMessage(message.text)}
+                        </div>
+                      )}
+                      <div className="mt-2 text-[10px] text-slate-500">{message.timestamp}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
 
-            <ChatInput
-              inputRef={inputRef}
-              currentMessage={currentMessage}
-              isProductContextActive={isProductContextActive}
-              isGenerating={isGenerating}
-              connectionState={connectionState}
-              onMessageChange={setCurrentMessage}
-              onSubmit={() => void handleSendMessage()}
-              onStop={handleStop}
-            />
-          </>
-        ) : activeTab === 'library' ? (
-          <LibraryView />
-        ) : activeTab === 'projects' ? (
-          <ProjectsView />
-        ) : (
-          <ExploreView />
-        )}
-      </div>
+              <ChatInput
+                inputRef={inputRef}
+                currentMessage={currentMessage}
+                isProductContextActive={isProductContextActive}
+                isGenerating={isGenerating}
+                connectionState={connectionState}
+                onMessageChange={setCurrentMessage}
+                onSubmit={() => void handleSendMessage()}
+                onStop={handleStop}
+              />
+            </>
+          ) : activeTab === 'library' ? (
+            <LibraryView />
+          ) : activeTab === 'projects' ? (
+            <ProjectsView />
+          ) : (
+            <ExploreView />
+          )}
+        </div>
+      </section>
     </div>
   );
 };

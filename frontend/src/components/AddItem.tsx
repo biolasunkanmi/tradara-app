@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   PlusCircle, Camera, 
@@ -13,6 +13,7 @@ export const AddItem: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAiAccordion, setShowAiAccordion] = useState(false);
+  const previewUrlsRef = useRef(new Set<string>());
 
   const [formData, setFormData] = useState({
     stockName: '',
@@ -68,6 +69,11 @@ export const AddItem: React.FC = () => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
 
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current.clear();
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
@@ -76,14 +82,38 @@ export const AddItem: React.FC = () => {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setSelectedFiles(prev => [...prev, ...files]);
+      const selected = Array.from(e.target.files);
+      const remainingSlots = Math.max(0, 5 - selectedFiles.length);
+      const files = selected
+        .filter((file) => file.type.startsWith('image/'))
+        .slice(0, remainingSlots);
+      if (files.length < selected.length) {
+        setError(
+          selectedFiles.length >= 5
+            ? 'A listing can include up to 5 images.'
+            : 'Only image files are supported, and listings are limited to 5 images.'
+        );
+      } else {
+        setError(null);
+      }
+      if (files.length === 0) {
+        e.target.value = '';
+        return;
+      }
+      setSelectedFiles((prev) => [...prev, ...files]);
       const newPreviews = files.map(file => URL.createObjectURL(file));
+      newPreviews.forEach((url) => previewUrlsRef.current.add(url));
       setPreviews(prev => [...prev, ...newPreviews]);
+      e.target.value = '';
     }
   };
 
   const removePhoto = (index: number) => {
+    const previewUrl = previews[index];
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrlsRef.current.delete(previewUrl);
+    }
     setPreviews(prev => prev.filter((_, i) => i !== index));
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
@@ -130,47 +160,60 @@ export const AddItem: React.FC = () => {
     try {
       const response = await API.post('/items', data);
       const createdItem = response.data;
-      const itemId = createdItem.id || createdItem._id;
+      const itemId = createdItem?.id || createdItem?._id;
+      const hasAiConfiguration = Boolean(
+        formData.minimumPrice || formData.targetPrice || formData.faqKnowledgeBase
+      );
+      let notice: string | undefined = itemId
+        ? undefined
+        : 'The listing request succeeded, but the server did not confirm its ID. Check your inventory before submitting again.';
 
-      // Save AI Configuration if configured
-      if (itemId && (formData.minimumPrice || formData.targetPrice || formData.faqKnowledgeBase)) {
-        await API.post(`/ai/config/${itemId}`, {
-          autoNegotiateEnabled: formData.autoNegotiateEnabled,
-          minimumPrice: formData.minimumPrice ? Number(formData.minimumPrice) : Number(formData.price),
-          targetPrice: formData.targetPrice ? Number(formData.targetPrice) : Number(formData.price),
-          walkawayPrice: formData.walkawayPrice ? Number(formData.walkawayPrice) : Number(formData.price) * 0.8,
-          discountStepPercent: Number(formData.discountStepPercent),
-          maxDiscountRounds: Number(formData.maxDiscountRounds),
-          bulkMinQuantity: formData.bulkMinQuantity ? Number(formData.bulkMinQuantity) : null,
-          bulkDiscountPercent: formData.bulkDiscountPercent ? Number(formData.bulkDiscountPercent) : null,
-          acceptsTradeIn: formData.acceptsTradeIn,
-          tradeInTerms: formData.tradeInTerms,
-          bundledItems: formData.bundledItems,
-          bundleDiscount: formData.bundleDiscount ? Number(formData.bundleDiscount) : null,
-          acceptedPayments: formData.acceptedPayments.split(',').map(s => s.trim()),
-          cashDiscountPercent: formData.cashDiscountPercent ? Number(formData.cashDiscountPercent) : null,
-          freeDeliveryEligible: formData.freeDeliveryEligible,
-          deliveryFeeEstimate: formData.deliveryFeeEstimate ? Number(formData.deliveryFeeEstimate) : null,
-          pickupAddress: formData.pickupAddress,
-          dispatchTimeline: formData.dispatchTimeline,
-          stockCount: Number(formData.stockCount),
-          urgencyLevel: formData.urgencyLevel,
-          expirationDate: formData.expirationDate ? new Date(formData.expirationDate) : null,
-          warrantyPeriod: formData.warrantyPeriod,
-          returnPolicyDays: Number(formData.returnPolicyDays),
-          productCondition: formData.productCondition,
-          knownFlaws: formData.knownFlaws,
-          specifications: formData.specifications,
-          faqKnowledgeBase: formData.faqKnowledgeBase,
-          minBuyerRating: formData.minBuyerRating ? Number(formData.minBuyerRating) : null,
-          aiTone: formData.aiTone,
-          greetingMessage: formData.greetingMessage,
-          escalateOnThreshold: formData.escalateOnThreshold ? Number(formData.escalateOnThreshold) : null,
-          sellerContactPhone: formData.sellerContactPhone,
-        });
+      if (hasAiConfiguration) {
+        if (!itemId) {
+          notice = 'The listing request succeeded, but the server did not confirm its ID or save its AI configuration. Check your inventory before submitting again.';
+        } else {
+          try {
+            await API.post(`/ai/config/${itemId}`, {
+              autoNegotiateEnabled: formData.autoNegotiateEnabled,
+              minimumPrice: formData.minimumPrice ? Number(formData.minimumPrice) : Number(formData.price),
+              targetPrice: formData.targetPrice ? Number(formData.targetPrice) : Number(formData.price),
+              walkawayPrice: formData.walkawayPrice ? Number(formData.walkawayPrice) : Number(formData.price) * 0.8,
+              discountStepPercent: Number(formData.discountStepPercent),
+              maxDiscountRounds: Number(formData.maxDiscountRounds),
+              bulkMinQuantity: formData.bulkMinQuantity ? Number(formData.bulkMinQuantity) : null,
+              bulkDiscountPercent: formData.bulkDiscountPercent ? Number(formData.bulkDiscountPercent) : null,
+              acceptsTradeIn: formData.acceptsTradeIn,
+              tradeInTerms: formData.tradeInTerms,
+              bundledItems: formData.bundledItems,
+              bundleDiscount: formData.bundleDiscount ? Number(formData.bundleDiscount) : null,
+              acceptedPayments: formData.acceptedPayments.split(',').map(s => s.trim()),
+              cashDiscountPercent: formData.cashDiscountPercent ? Number(formData.cashDiscountPercent) : null,
+              freeDeliveryEligible: formData.freeDeliveryEligible,
+              deliveryFeeEstimate: formData.deliveryFeeEstimate ? Number(formData.deliveryFeeEstimate) : null,
+              pickupAddress: formData.pickupAddress,
+              dispatchTimeline: formData.dispatchTimeline,
+              stockCount: Number(formData.stockCount),
+              urgencyLevel: formData.urgencyLevel,
+              expirationDate: formData.expirationDate ? new Date(formData.expirationDate) : null,
+              warrantyPeriod: formData.warrantyPeriod,
+              returnPolicyDays: Number(formData.returnPolicyDays),
+              productCondition: formData.productCondition,
+              knownFlaws: formData.knownFlaws,
+              specifications: formData.specifications,
+              faqKnowledgeBase: formData.faqKnowledgeBase,
+              minBuyerRating: formData.minBuyerRating ? Number(formData.minBuyerRating) : null,
+              aiTone: formData.aiTone,
+              greetingMessage: formData.greetingMessage,
+              escalateOnThreshold: formData.escalateOnThreshold ? Number(formData.escalateOnThreshold) : null,
+              sellerContactPhone: formData.sellerContactPhone,
+            });
+          } catch {
+            notice = 'Your listing is published in your inventory, but its AI configuration was not saved. No duplicate listing was created.';
+          }
+        }
       }
 
-      navigate('/dashboard');
+      navigate('/dashboard', { state: notice ? { notice } : null });
     } catch {
       setError("Upload failed. Check your network or server terminal.");
     } finally {
@@ -195,12 +238,12 @@ export const AddItem: React.FC = () => {
             <h3 className="text-lg font-black mb-4 flex items-center gap-2 dark:text-white">
               <Camera size={20} className="text-blue-600"/> Gallery
             </h3>
-            <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*" />
+            <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileChange} accept="image/*" aria-label="Choose up to five listing images" />
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {previews.map((img, idx) => (
                 <div key={idx} className="relative aspect-square rounded-3xl overflow-hidden border-2 border-white dark:border-slate-800">
-                  <img src={img} className="w-full h-full object-cover" alt="Preview" />
-                  <button type="button" onClick={() => removePhoto(idx)} className="absolute top-2 right-2 bg-red-500 p-1.5 rounded-full text-white">
+                  <img src={img} className="w-full h-full object-cover" alt={`${selectedFiles[idx]?.name || 'Product image'} preview`} />
+                  <button type="button" onClick={() => removePhoto(idx)} aria-label={`Remove ${selectedFiles[idx]?.name || 'image'}`} className="absolute top-2 right-2 min-w-11 min-h-11 flex items-center justify-center bg-red-500 rounded-full text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">
                     <X size={14}/>
                   </button>
                 </div>
@@ -248,7 +291,7 @@ export const AddItem: React.FC = () => {
 
             <div>
               <label className="text-xs font-black uppercase text-slate-400 ml-2">Price Magnitude</label>
-              <input name="price" value={formData.price} type="number" required className="w-full bg-slate-50 dark:bg-white/5 rounded-2xl py-4 px-6 mt-2 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-bold" onChange={handleChange} />
+              <input name="price" value={formData.price} type="number" min="0.01" step="0.01" required aria-label="Price" className="w-full bg-slate-50 dark:bg-white/5 rounded-2xl py-4 px-6 mt-2 outline-none focus:ring-2 focus:ring-blue-500 dark:text-white font-bold" onChange={handleChange} />
             </div>
 
             <div className="md:col-span-2">
@@ -435,7 +478,7 @@ export const AddItem: React.FC = () => {
             </div>
           </div>
 
-          {error && <div className="bg-red-500/10 text-red-500 p-4 rounded-2xl font-bold text-center">{error}</div>}
+          {error && <div role="alert" className="bg-red-500/10 text-red-500 p-4 rounded-2xl font-bold text-center">{error}</div>}
 
           <button type="submit" disabled={loading || !isContactProvided()} className={`w-full py-5 rounded-[2rem] font-black text-lg shadow-xl transition-all active:scale-95 ${isContactProvided() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
             {loading ? 'SYNCING TO GLOBAL SERVERS...' : 'PUBLISH WORLDWIDE'}

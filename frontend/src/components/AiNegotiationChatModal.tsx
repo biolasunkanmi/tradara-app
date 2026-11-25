@@ -60,6 +60,7 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
   const [intelligence, setIntelligence] = useState<MarketplaceIntelligence | null>(null);
   const [latestPerception, setLatestPerception] = useState<BuyerPerception | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const requestInFlightRef = useRef(false);
 
   const currencySymbol = product?.currency || '₦';
   const numericPrice = Number(product?.price || 0);
@@ -119,12 +120,21 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSendMessage = async (e?: React.FormEvent, customOffer?: number) => {
+  const handleSendMessage = async (
+    e?: React.FormEvent,
+    customOffer?: number,
+    messageOverride?: string
+  ) => {
     if (e) e.preventDefault();
-    const textToSend = inputValue.trim();
-    if (!textToSend && !customOffer) return;
+    if (requestInFlightRef.current) return;
+    const textToSend = (messageOverride ?? inputValue).trim();
+    if (!textToSend && customOffer === undefined && !offerInput.trim()) return;
 
-    const currentOfferPrice = customOffer || (offerInput ? Number(offerInput) : undefined);
+    const currentOfferPrice = customOffer ?? (offerInput ? Number(offerInput) : undefined);
+    if (
+      currentOfferPrice !== undefined &&
+      (!Number.isFinite(currentOfferPrice) || currentOfferPrice <= 0)
+    ) return;
 
     const userMessageText = textToSend || `I would like to make an offer of ${currencySymbol}${currentOfferPrice?.toLocaleString()}`;
     const newUserMessage: Message = {
@@ -142,6 +152,7 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
     setMessages((prev) => [...prev, newUserMessage]);
     setInputValue('');
     setOfferInput('');
+    requestInFlightRef.current = true;
     setIsTyping(true);
 
     try {
@@ -197,19 +208,21 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
+      requestInFlightRef.current = false;
       setIsTyping(false);
     }
   };
 
   const requestHumanAgent = async () => {
     setIsHumanHandover(true);
-    setInputValue('I would like to speak with a human seller representative.');
-    await handleSendMessage(undefined);
+    const handoverMessage = 'I would like to speak with a human seller representative.';
+    setInputValue(handoverMessage);
+    await handleSendMessage(undefined, undefined, handoverMessage);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="flex flex-col w-full max-w-2xl max-h-[85vh] h-[650px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-blue-100">
+      <div role="dialog" aria-modal="true" aria-labelledby="negotiation-dialog-title" className="flex flex-col w-full max-w-2xl max-h-[85vh] h-[650px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-blue-100">
         
         {/* Header - TRADARA Blue Theme */}
         <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-800 text-white p-4 flex items-center justify-between shadow-md">
@@ -229,7 +242,7 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="font-bold text-lg leading-tight">{product?.stockName || 'Item'}</h3>
+                <h3 id="negotiation-dialog-title" className="font-bold text-lg leading-tight">{product?.stockName || 'Item'}</h3>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/30 border border-blue-300/30 text-blue-100 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-amber-300" /> TRADARA AI
                 </span>
@@ -249,6 +262,7 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
             {!isHumanHandover && (
               <button
                 onClick={requestHumanAgent}
+                disabled={isTyping}
                 className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-colors border border-white/15"
                 title="Connect with Human Seller"
               >
@@ -404,6 +418,7 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
                   <button
                     key={pct}
                     onClick={() => handleSendMessage(undefined, calculatedOffer)}
+                    disabled={isTyping}
                     className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors font-medium shrink-0"
                   >
                     {pct}% Off ({currencySymbol}{calculatedOffer.toLocaleString()})
@@ -418,6 +433,8 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              disabled={isTyping}
+              aria-label="Message Tradara AI"
               placeholder={
                 isHumanHandover
                   ? 'Message live representative...'
@@ -428,7 +445,8 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
 
             <button
               type="submit"
-              disabled={!inputValue.trim() && !offerInput}
+              disabled={isTyping || (!inputValue.trim() && !offerInput)}
+              aria-label="Send message"
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white p-2.5 rounded-xl transition-all shadow-md shrink-0"
             >
               <Send className="w-4 h-4" />

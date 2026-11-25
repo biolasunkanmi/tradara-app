@@ -169,9 +169,11 @@ const AppContent: React.FC = () => {
         {!isAiOpen && (
           <button
             onClick={() => setIsAiOpen(true)}
-            className="fixed bottom-6 right-6 z-[90] px-4 py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white rounded-2xl shadow-2xl border border-purple-400/30 flex items-center gap-2.5 hover:scale-105 transition-all group"
+            aria-label="Open Tradara AI assistant"
+            title="Open Tradara AI assistant"
+            className="fixed bottom-6 right-6 z-[90] bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] h-11 w-11 justify-center p-0 sm:h-auto sm:w-auto sm:justify-start sm:px-4 sm:py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white rounded-xl sm:rounded-2xl shadow-2xl border border-purple-400/30 flex items-center gap-2.5 hover:scale-105 transition-all group"
           >
-            <div className="p-1.5 rounded-lg bg-white/10 group-hover:rotate-12 transition-transform">
+            <div className="p-1 rounded-lg bg-white/10 group-hover:rotate-12 transition-transform sm:p-1.5">
               <Sparkles className="w-5 h-5 animate-pulse" />
             </div>
             <div className="text-left hidden sm:block">

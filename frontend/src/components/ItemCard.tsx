@@ -45,6 +45,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item }) => {
     }
   };
 
+  const handleCardKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest('button')
+    ) {
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const productId = item._id || item.id;
+      if (productId) navigate(`/product/${productId}`);
+    }
+  };
+
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return 'https://placehold.co/400x500?text=No+Image';
     if (imagePath.includes('cloudinary.com')) {
@@ -120,7 +134,14 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item }) => {
 
   return (
     <>
-      <div onClick={handleViewDetails} className="glass-card group rounded-[2.5rem] overflow-hidden hover:scale-[1.03] transition-all duration-500 hover:border-blue-500/40 cursor-pointer flex flex-col h-full relative">
+      <div
+        onClick={handleViewDetails}
+        onKeyDown={handleCardKeyDown}
+        role="group"
+        tabIndex={0}
+        aria-label={`Product ${item.stockName || 'item'}. Press Enter to view details.`}
+        className="glass-card group rounded-[2.5rem] overflow-hidden hover:scale-[1.03] transition-all duration-500 hover:border-blue-500/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 cursor-pointer flex flex-col h-full relative"
+      >
         <div className="relative aspect-[4/5] overflow-hidden bg-slate-900 shrink-0">
           <img src={getImageUrl(item.images?.[0])} loading="lazy" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-700" alt={item.stockName} />
           <div className="absolute top-3 left-3 flex flex-col gap-1">
@@ -158,14 +179,14 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item }) => {
           <p className="text-slate-400 text-xs line-clamp-2 italic leading-relaxed">"{item.description}"</p>
           
           <div className="mt-auto flex flex-col gap-2 pt-2">
-            <button onClick={handleAskAi} className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2.5 rounded-2xl font-black text-[10px] flex items-center justify-center gap-1.5 hover:brightness-110 transition-all shadow-md shadow-indigo-500/20 uppercase tracking-widest">
+            <button type="button" onClick={handleAskAi} aria-label={`Ask Tradara AI about ${item.stockName || 'this product'}`} className="min-h-11 w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-2.5 rounded-2xl font-black text-[10px] flex items-center justify-center gap-1.5 hover:brightness-110 transition-all shadow-md shadow-indigo-500/20 uppercase tracking-widest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400">
               <Bot size={14} />  ASK DIRECTLY HERE
             </button>
             <div className="flex gap-2">
-              <button onClick={handleChatNow} className="flex-1 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white py-3 rounded-2xl font-bold text-[10px] flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 uppercase tracking-widest">
+              <button type="button" onClick={handleChatNow} disabled={!item.whatsapp && !item.instagram && !item.facebook && !item.tiktok} title={!item.whatsapp && !item.instagram && !item.facebook && !item.tiktok ? 'Seller contact details are not available' : undefined} className="min-h-11 flex-1 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white py-3 rounded-2xl font-bold text-[10px] flex items-center justify-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
                 <MessageSquare size={14} /> CHAT
               </button>
-              <button onClick={(e) => { e.stopPropagation(); addToCart(item); }} className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-bold text-[10px] flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 uppercase tracking-widest">
+              <button type="button" onClick={(e) => { e.stopPropagation(); addToCart(item); }} aria-label={`Add ${item.stockName || 'product'} to cart`} className="min-h-11 flex-1 bg-blue-600 text-white py-3 rounded-2xl font-bold text-[10px] flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 uppercase tracking-widest focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400">
                 <ShoppingCart size={14} /> + CART
               </button>
             </div>

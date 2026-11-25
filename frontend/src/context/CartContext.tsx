@@ -29,6 +29,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         price: product.price, 
         currency: product.currency || '₦',
         image: product.images?.[0] || '',
+        whatsapp: product.whatsapp,
         quantity: 1 
       }];
     });

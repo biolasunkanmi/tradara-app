@@ -6,6 +6,7 @@ export interface CartItem {
   price: number;
   currency: string;
   image: string;
+  whatsapp?: string;
   quantity: number;
 }
 
@@ -16,6 +17,7 @@ export interface CartProduct {
   price?: number;
   currency?: string;
   images?: string[];
+  whatsapp?: string;
 }
 
 export interface CartContextType {

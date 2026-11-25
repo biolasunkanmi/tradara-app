@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import API from '../services/api'; 
 import { X, MapPin, Camera } from 'lucide-react';
 
@@ -22,19 +23,30 @@ interface Item {
 }
 
 export const Dashboard: React.FC = () => {
+  const location = useLocation();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const navigationNotice =
+    location.state &&
+    typeof location.state === 'object' &&
+    'notice' in location.state &&
+    typeof location.state.notice === 'string'
+      ? location.state.notice
+      : null;
 
   const fetchMyItems = async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const response = await API.get('/items/me'); 
       setItems(response.data);
     } catch {
-      console.error("Dashboard fetch error");
+      setLoadError('Unable to load your inventory. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -83,9 +95,10 @@ export const Dashboard: React.FC = () => {
       await fetchMyItems();
       setIsEditModalOpen(false);
       setSelectedFiles(null);
+      setActionError(null);
       alert("Listing updated successfully!");
     } catch {
-      alert("Update failed. Check your network.");
+      setActionError("Update failed. Check your connection and try again.");
     }
   };
 
@@ -98,7 +111,16 @@ export const Dashboard: React.FC = () => {
         <div className="bg-blue-600 text-white px-6 py-3 rounded-full font-black text-sm">{items.length} ACTIVE</div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {navigationNotice && <p role="status" className="mb-6 rounded-2xl bg-amber-500/10 p-4 font-semibold text-amber-700 dark:text-amber-300">{navigationNotice}</p>}
+      {actionError && <p role="alert" className="mb-6 rounded-2xl bg-red-500/10 p-4 font-semibold text-red-600">{actionError}</p>}
+      {loadError ? (
+        <div role="alert" className="rounded-3xl border border-red-500/20 bg-red-500/5 p-8 text-center">
+          <p className="font-semibold text-red-600">{loadError}</p>
+          <button type="button" onClick={fetchMyItems} className="mt-4 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">Try again</button>
+        </div>
+      ) : items.length === 0 ? (
+        <p className="rounded-3xl bg-white p-10 text-center font-semibold text-slate-500 dark:bg-slate-900">You have no listings yet.</p>
+      ) : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {items.map((item) => (
           <div key={item.id || item._id} className="bg-white dark:bg-slate-900 rounded-[3rem] p-6 shadow-xl border border-slate-100 dark:border-white/5">
             <div className="h-48 rounded-[2rem] overflow-hidden mb-6 bg-slate-100">
@@ -120,15 +142,16 @@ export const Dashboard: React.FC = () => {
                   try {
                     await API.delete(`/items/${item.id || item._id}`);
                     setItems(p => p.filter(i => (i.id || i._id) !== (item.id || item._id)));
+                    setActionError(null);
                   } catch {
-                    alert("Delete failed.");
+                    setActionError("Delete failed. Check your connection and try again.");
                   }
                 }
               }} className="bg-red-500/10 text-red-500 py-4 rounded-2xl font-black text-xs hover:bg-red-500 hover:text-white transition-all">DELETE</button>
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {isEditModalOpen && editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
