@@ -11,7 +11,6 @@ import {
   StopCircle, 
   Trash2, 
   AlertCircle, 
-  Loader2, 
   Zap,
   Tag
 } from 'lucide-react';
@@ -24,7 +23,7 @@ interface AIChatWindowProps {
 }
 
 export const AIChatWindow: React.FC<AIChatWindowProps> = ({
-  apiEndpoint = '/api/ai/chat/stream',
+  apiEndpoint = '/api/ai/chat',
   getAuthToken,
   storeName = 'TRADARA Assistant',
 }) => {

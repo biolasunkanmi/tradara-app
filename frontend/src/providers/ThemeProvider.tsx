@@ -1,25 +1,15 @@
 'use client';
 
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import { ThemeContext, type Theme, type ThemeContextValue } from './themeContext';
 
-export type Theme = 'dark' | 'light';
-
-interface ThemeContextValue {
-  theme: Theme;
-  isDark: boolean;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+export type { Theme } from './themeContext';
 
 interface ThemeProviderProps {
   children: ReactNode;
@@ -87,16 +77,4 @@ export function ThemeProvider({
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useThemeContext(): ThemeContextValue {
-  const context = useContext(ThemeContext);
-
-  if (!context) {
-    throw new Error(
-      'useThemeContext must be used inside ThemeProvider.'
-    );
-  }
-
-  return context;
 }

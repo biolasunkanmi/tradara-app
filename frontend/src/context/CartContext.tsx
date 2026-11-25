@@ -1,23 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-// Define the shape of a Cart Item
-interface CartItem {
-  id: string;
-  stockName: string;
-  price: number;
-  currency: string;
-  image: string;
-  quantity: number;
-}
-
-interface CartContextType {
-  cart: CartItem[];
-  addToCart: (item: any) => void;
-  removeFromCart: (id: string) => void;
-  clearCart: () => void;
-}
-
-const CartContext = createContext<CartContextType | undefined>(undefined);
+import React, { useState, useEffect } from 'react';
+import { CartContext, type CartItem, type CartProduct } from './CartContextStore';
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -33,7 +15,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('tradara_cart', JSON.stringify(cart));
   }, [cart]);
 
-  const addToCart = (product: any) => {
+  const addToCart = (product: CartProduct) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id || item.id === product._id);
       if (existing) {
@@ -63,10 +45,4 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </CartContext.Provider>
   );
-};
-
-export const useCart = () => {
-  const context = useContext(CartContext);
-  if (!context) throw new Error("useCart must be used within a CartProvider");
-  return context;
 };

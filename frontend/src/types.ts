@@ -16,7 +16,7 @@ export interface User {
     phone?: string;
     city?: string;
     user? : {userId: string ;email : string}; // For socket.io user identification
-    io?: any; // Socket.IO client instance (optional)
+    io?: unknown; // Socket.IO client instance (optional)
 }
 export interface userPayload {
     userId: string;

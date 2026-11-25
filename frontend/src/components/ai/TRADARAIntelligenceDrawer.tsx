@@ -19,7 +19,7 @@ export interface ChatMessage {
   requiresConfirmation?: boolean;
   pendingToolDetails?: {
     toolName: string;
-    params: any;
+    params: Record<string, unknown>;
   };
 }
 
@@ -64,7 +64,7 @@ export const TRADARAIntelligenceDrawer: React.FC<TRADARAIntelligenceDrawerProps>
 
   if (!isOpen) return null;
 
-  const handleSendMessage = async (confirmation: boolean = false, pendingTool?: any) => {
+  const handleSendMessage = async (confirmation: boolean = false, pendingTool?: Record<string, unknown>) => {
     if (!inputText.trim() && !pendingTool) return;
 
     const userMsgText = inputText.trim();

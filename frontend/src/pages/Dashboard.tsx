@@ -33,10 +33,10 @@ export const Dashboard: React.FC = () => {
       setLoading(true);
       const response = await API.get('/items/me'); 
       setItems(response.data);
-    } catch (err) { 
-      console.error("Dashboard fetch error:", err); 
-    } finally { 
-      setLoading(false); 
+    } catch {
+      console.error("Dashboard fetch error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -84,7 +84,7 @@ export const Dashboard: React.FC = () => {
       setIsEditModalOpen(false);
       setSelectedFiles(null);
       alert("Listing updated successfully!");
-    } catch (err) {
+    } catch {
       alert("Update failed. Check your network.");
     }
   };
@@ -120,7 +120,9 @@ export const Dashboard: React.FC = () => {
                   try {
                     await API.delete(`/items/${item.id || item._id}`);
                     setItems(p => p.filter(i => (i.id || i._id) !== (item.id || item._id)));
-                  } catch (err) { alert("Delete failed."); }
+                  } catch {
+                    alert("Delete failed.");
+                  }
                 }
               }} className="bg-red-500/10 text-red-500 py-4 rounded-2xl font-black text-xs hover:bg-red-500 hover:text-white transition-all">DELETE</button>
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAI } from '../../context/AIContext';
+import { useAI } from '../../context/useAIContext';
 import { ToolExecutionModal } from './ToolExecutionModal';
 import type { ToolCallItem } from '../../types/ai';
 import { Send, Bot, User, Sparkles, ChevronDown } from 'lucide-react';

@@ -18,8 +18,8 @@ export interface ChatMessage {
   metadata?: {
     toolExecuted?: boolean;
     quickOffers?: Array<{ label: string; price: number; formatted: string }>;
-    activeProduct?: any;
-    negotiationEngineOutput?: any;
+    activeProduct?: Record<string, unknown>;
+    negotiationEngineOutput?: Record<string, unknown>;
   };
 }
 
@@ -34,7 +34,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
-  activeProduct?: any;
+  activeProduct?: Record<string, unknown>;
   negotiationState?: {
     sellerPrice: number;
     buyerOffer: number;

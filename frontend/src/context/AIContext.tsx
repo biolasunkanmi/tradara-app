@@ -1,21 +1,8 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AIMessage, PendingToolApproval, ToolExecutionResult, BuyerPerception, MarketplaceIntelligence } from '../types/ai';
 import { aiApiService } from '../services/aiApi';
-
-interface AIContextType {
-  messages: AIMessage[];
-  isProcessing: boolean;
-  pendingApproval: PendingToolApproval | null;
-  lastPerception: BuyerPerception | null;
-  lastIntelligence: MarketplaceIntelligence | null;
-  sendMessage: (content: string, options?: { itemId?: string; buyerSession?: string; buyerId?: string; offeredPrice?: number; quantity?: number }) => Promise<void>;
-  executeToolWithApproval: () => Promise<void>;
-  cancelToolApproval: () => void;
-  clearMessages: () => void;
-}
-
-const AIContext = createContext<AIContextType | undefined>(undefined);
+import { AIContext } from './AIContextStore';
 
 export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [messages, setMessages] = useState<AIMessage[]>([]);
@@ -185,10 +172,3 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   );
 };
 
-export const useAI = () => {
-  const context = useContext(AIContext);
-  if (!context) {
-    throw new Error('useAI must be used within an AIProvider');
-  }
-  return context;
-};

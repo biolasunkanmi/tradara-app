@@ -1,10 +1,10 @@
 export interface ToolExecutionPayload {
   toolName: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   confirmed?: boolean;
 }
 
-export interface ToolExecutionResult<T = any> {
+export interface ToolExecutionResult<T = unknown> {
   success: boolean;
   message?: string;
   result?: T;
@@ -14,19 +14,19 @@ export interface ToolExecutionResult<T = any> {
 export interface ToolDefinitionSchema {
   name: string;
   description: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
 }
 
 export interface PendingToolApproval {
   toolName: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   riskLevel: 'READ_ONLY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'EXECUTE';
 }
 
 export interface ToolCallItem {
   toolName: string;
-  parameters: Record<string, any>;
-  result?: ToolExecutionResult;
+  parameters: Record<string, unknown>;
+  result?: ToolExecutionResult<unknown>;
   status: 'pending' | 'completed' | 'failed';
 }
 

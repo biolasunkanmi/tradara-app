@@ -4,10 +4,27 @@ import {
   MessageCircle, MapPin, ShoppingCart, 
   MessageSquare, Instagram, Facebook, Video, X, Bot, Sparkles
 } from 'lucide-react';
-import { useCart } from '../context/CartContext';
+import { useCart } from '../context/useCart';
+
+interface ItemCardItem {
+  _id?: string;
+  id?: string;
+  stockName?: string;
+  price?: number | string;
+  currency?: string;
+  category?: string;
+  city?: string;
+  description?: string;
+  images?: string[];
+  whatsapp?: string;
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  aiConfig?: unknown;
+}
 
 interface ItemCardProps {
-  item: any;
+  item: ItemCardItem;
 }
 
 export const ItemCard: React.FC<ItemCardProps> = ({ item }) => {
@@ -45,21 +62,26 @@ export const ItemCard: React.FC<ItemCardProps> = ({ item }) => {
     let url = "";
     const message = encodeURIComponent(`Hello, I saw your "${item.stockName}" on Tradara. Is it still available?`);
 
-    switch(platform) {
-      case 'whatsapp':
+    switch (platform) {
+      case 'whatsapp': {
         let phone = value.replace(/\D/g, '');
-        // If it starts with 0 (Nigerian format), convert to 234
         if (phone.startsWith('0')) phone = `234${phone.substring(1)}`;
         url = `https://wa.me/${phone}?text=${message}`;
         break;
-      case 'instagram':
-        url = value.startsWith('http') ? value : `https://instagram.com/${value.replace('@','')}`;
+      }
+      case 'instagram': {
+        url = value.startsWith('http') ? value : `https://instagram.com/${value.replace('@', '')}`;
         break;
-      case 'facebook':
+      }
+      case 'facebook': {
         url = value.startsWith('http') ? value : `https://facebook.com/${value}`;
         break;
-      case 'tiktok':
-        url = value.startsWith('http') ? value : `https://tiktok.com/@${value.replace('@','')}`;
+      }
+      case 'tiktok': {
+        url = value.startsWith('http') ? value : `https://tiktok.com/@${value.replace('@', '')}`;
+        break;
+      }
+      default:
         break;
     }
     window.open(url, '_blank', 'noopener,noreferrer');

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { aiApiService } from '../../services/aiApi';
 import type { SendChatMessagePayload } from '../../services/aiApi';
 import { Sparkles, Send, Bot, RefreshCw, X, ShoppingBag, UserCheck } from 'lucide-react';
@@ -43,24 +43,7 @@ export const TradaraAiDrawer: React.FC<TradaraAiDrawerProps> = ({
 
   const currencySymbol = activeItem?.currency || '₦';
 
-  useEffect(() => {
-    if (isOpen && activeItem?.id && buyerSession) {
-      fetchHistory();
-    } else if (isOpen && !activeItem) {
-      setMessages([
-        {
-          sender: 'ai',
-          message: 'Hello! I am TRADARA AI, your advanced assistant. Ask me any question, explore product details, or select an item from the marketplace to start dynamic negotiations!',
-        },
-      ]);
-    }
-  }, [isOpen, activeItem?.id, buyerSession]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!activeItem) return;
     setIsLoading(true);
     try {
@@ -69,10 +52,17 @@ export const TradaraAiDrawer: React.FC<TradaraAiDrawerProps> = ({
         setSessionStatus(res.session.status || 'active');
         if (res.session.messages && res.session.messages.length > 0) {
           setMessages(
-            res.session.messages.map((m: any) => ({
+            res.session.messages.map((m: {
+              id?: string;
+              sender?: string;
+              message?: string;
+              content?: string;
+              createdAt?: string;
+              offerMade?: number;
+            }) => ({
               id: m.id,
-              sender: m.sender as any,
-              message: m.message,
+              sender: (m.sender === 'buyer' || m.sender === 'seller' || m.sender === 'ai' || m.sender === 'system') ? m.sender : 'ai',
+              message: m.message ?? m.content ?? '',
               createdAt: m.createdAt,
               offerMade: m.offerMade,
             }))
@@ -104,7 +94,24 @@ export const TradaraAiDrawer: React.FC<TradaraAiDrawerProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeItem, buyerSession]);
+
+  useEffect(() => {
+    if (isOpen && activeItem?.id && buyerSession) {
+      void fetchHistory();
+    } else if (isOpen && !activeItem) {
+      setMessages([
+        {
+          sender: 'ai',
+          message: 'Hello! I am TRADARA AI, your advanced assistant. Ask me any question, explore product details, or select an item from the marketplace to start dynamic negotiations!',
+        },
+      ]);
+    }
+  }, [isOpen, activeItem, buyerSession, fetchHistory]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
 
   const handleSendMessage = async (textToSend?: string, numericOffer?: number) => {
     const text = textToSend || inputMessage;
@@ -155,7 +162,7 @@ export const TradaraAiDrawer: React.FC<TradaraAiDrawerProps> = ({
           },
         ]);
       }
-    } catch (error: any) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {

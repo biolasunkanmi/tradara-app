@@ -42,8 +42,16 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
         onRegisterSuccess(data.token);
         navigate('/');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Registration failed. Try again.");
+    } catch (error: unknown) {
+      const message =
+        typeof error === 'object' && error !== null && 'response' in error &&
+        typeof error.response === 'object' && error.response !== null && 'data' in error.response &&
+        typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data &&
+        typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : 'Registration failed. Try again.';
+
+      setError(message);
     } finally {
       setLoading(false);
     }

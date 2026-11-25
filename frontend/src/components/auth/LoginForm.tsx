@@ -25,7 +25,7 @@ export const LoginForm: React.FC = () => {
         password,
       });
 
-      const { accessToken, refreshToken, user } = response.data;
+      const { accessToken, refreshToken } = response.data;
 
       // Store securely
       localStorage.setItem('tradara_access_token', accessToken);
@@ -35,12 +35,12 @@ export const LoginForm: React.FC = () => {
 
       // Redirect to TRADARA OS Dashboard
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[Login Error]:', err);
-      setError(
-        err.response?.data?.error || 
-        'Login failed. Please verify your credentials or check your network connection.'
-      );
+      const message = err && typeof err === 'object' && 'response' in err && err.response && typeof err.response === 'object' && 'data' in err.response && err.response.data && typeof err.response.data === 'object' && 'error' in err.response.data && typeof err.response.data.error === 'string'
+        ? err.response.data.error
+        : 'Login failed. Please verify your credentials or check your network connection.';
+      setError(message);
     } finally {
       setIsLoading(false);
     }

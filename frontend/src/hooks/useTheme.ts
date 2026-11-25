@@ -1,6 +1,6 @@
 'use client';
 
-import { useThemeContext } from '@/providers/ThemeProvider';
+import { useThemeContext } from '../providers/themeContext';
 
 export function useTheme() {
   return useThemeContext();

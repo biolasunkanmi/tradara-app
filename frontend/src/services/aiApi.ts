@@ -33,7 +33,7 @@ export interface SendChatMessagePayload {
   conversationHistory?: ChatHistoryItem[];
   sessionId?: string;
   userConfirmationConfirmed?: boolean;
-  pendingTool?: any;
+  pendingTool?: Record<string, unknown>;
   product?: {
     id?: string;
     name?: string;
@@ -57,8 +57,8 @@ export interface SendChatMessageResponse {
     perception?: BuyerPerception;
     intelligence?: MarketplaceIntelligence;
     requiresConfirmation?: boolean;
-    pendingToolDetails?: any;
-    toolExecutions?: any[];
+    pendingToolDetails?: Record<string, unknown>;
+    toolExecutions?: Record<string, unknown>[];
   };
   error?: string;
 }
@@ -85,9 +85,9 @@ class AiApiService {
   private baseUrl = (() => {
     const envApiUrl =
       (typeof process !== 'undefined' &&
-        process?.env?.REACT_APP_API_URL) ||
-      (import.meta as any).env?.VITE_API_URL ||
-      (import.meta as any).env?.REACT_APP_API_URL;
+        process.env?.REACT_APP_API_URL) ||
+      (import.meta.env as Record<string, string | undefined>).VITE_API_URL ||
+      (import.meta.env as Record<string, string | undefined>).REACT_APP_API_URL;
 
     return (
       envApiUrl
@@ -101,7 +101,7 @@ class AiApiService {
    */
   async executeTool(
     payload: ToolExecutionPayload
-  ): Promise<ToolExecutionResult<any>> {
+  ): Promise<ToolExecutionResult<unknown>> {
     try {
       const response = await fetch(
         `${this.baseUrl}/execute-tool`,
@@ -121,18 +121,18 @@ class AiApiService {
       }
 
       return await response.json();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error executing tool via AI Service:',
         error
       );
 
+      const message = error instanceof Error ? error.message : 'Failed to execute tool';
+
       return {
         success: false,
-        message:
-          error.message ||
-          'Failed to execute tool',
-        result: null
+        message,
+        result: null,
       };
     }
   }
@@ -161,7 +161,7 @@ class AiApiService {
       }
 
       return await response.json();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error fetching available tools:',
         error
@@ -202,17 +202,17 @@ class AiApiService {
       }
 
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error sending Tradara AI chat:',
         error
       );
 
+      const message = error instanceof Error ? error.message : 'Failed to send AI chat message';
+
       return {
         success: false,
-        error:
-          error.message ||
-          'Failed to send AI chat message'
+        error: message,
       };
     }
   }
@@ -250,17 +250,17 @@ class AiApiService {
       }
 
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error sending chat message:',
         error
       );
 
+      const message = error instanceof Error ? error.message : 'Failed to send chat message';
+
       return {
         success: false,
-        error:
-          error.message ||
-          'Failed to send chat message'
+        error: message,
       };
     }
   }
@@ -302,17 +302,17 @@ class AiApiService {
       }
 
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         'Error retrieving negotiation history:',
         error
       );
 
+      const message = error instanceof Error ? error.message : 'Failed to fetch history';
+
       return {
         success: false,
-        error:
-          error.message ||
-          'Failed to fetch history'
+        error: message,
       };
     }
   }

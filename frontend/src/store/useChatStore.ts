@@ -17,14 +17,14 @@ interface ChatOSState {
   
   // Actions
   setActiveSession: (id: string | null) => void;
-  createSession: (category?: ChatCategory, initialProduct?: any) => string;
+  createSession: (category?: ChatCategory, initialProduct?: Record<string, unknown> | null) => string;
   updateSessionTitle: (id: string, title: string) => void;
   deleteSession: (id: string) => void;
   togglePinSession: (id: string) => void;
   toggleFavoriteSession: (id: string) => void;
   toggleArchiveSession: (id: string) => void;
   addMessageToActiveSession: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
-  updateLastMessageContent: (content: string, metadata?: Record<string, any>) => void;
+  updateLastMessageContent: (content: string, metadata?: Record<string, unknown>) => void;
   setSearchQuery: (query: string) => void;
   toggleRightPanel: (open?: boolean) => void;
   setRightPanelTab: (tab: 'product' | 'negotiation' | 'insights' | 'seller') => void;
@@ -107,7 +107,7 @@ export const useChatStore = create<ChatOSState>()(
 
       setActiveSession: (id: string | null) => set({ activeSessionId: id }),
       
-      createSession: (category: ChatCategory = 'general', initialProduct: any = null) => {
+      createSession: (category: ChatCategory = 'general', initialProduct: Record<string, unknown> | null = null) => {
         const newId = `session-${Date.now()}`;
         const newSession: ChatSession = {
           id: newId,
@@ -189,7 +189,7 @@ export const useChatStore = create<ChatOSState>()(
         };
       }),
 
-      updateLastMessageContent: (content: string, metadata?: Record<string, any>) => set((state: ChatOSState) => {
+      updateLastMessageContent: (content: string, metadata?: Record<string, unknown>) => set((state: ChatOSState) => {
         const activeId = state.activeSessionId;
         if (!activeId) return state;
 

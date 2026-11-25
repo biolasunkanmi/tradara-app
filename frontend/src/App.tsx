@@ -1,4 +1,4 @@
-import React, { useState, createContext, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { 
   PlusCircle, LayoutDashboard, 
@@ -13,29 +13,30 @@ import { Register } from "./pages/Register";
 import { AddItem } from "./components/AddItem";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPasswordPage } from "./pages/ResetPassword";
-import { CartProvider, useCart } from "./context/CartContext"; 
+import { CartProvider } from "./context/CartContext";
+import { useCart } from "./context/useCart";
+import { AppContext, type ActiveItem, type AppUser } from "./context/AppContext";
 import { ProductDetail } from './pages/ProductDetails'; 
 import { TradaraAISidebar } from './components/ai/TradaraAISidebar';
-
-export const AppContext = createContext<any>(null);
 
 const INACTIVITY_LIMIT = 20 * 60 * 1000; // 20 minutes inactivity limit
 
 const AppContent: React.FC = () => {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
-  const [user, setUser] = useState<any>(JSON.parse(localStorage.getItem("user") || "null"));
+  const [user, setUser] = useState<AppUser | null>(() => {
+    const savedUser = localStorage.getItem("user");
+    if (!savedUser) return null;
+
+    try {
+      return JSON.parse(savedUser) as AppUser;
+    } catch {
+      return null;
+    }
+  });
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAiOpen, setIsAiOpen] = useState(false);
-  const [activeItem, setActiveItem] = useState<{ title?: string; price?: string; category?: string } | null>(null);
-  const [buyerSession] = useState<string>(() => {
-    let session = localStorage.getItem('tradara_buyer_session');
-    if (!session) {
-      session = 'session_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
-      localStorage.setItem('tradara_buyer_session', session);
-    }
-    return session;
-  });
+  const [activeItem, setActiveItem] = useState<ActiveItem | null>(null);
 
   const { cart } = useCart(); 
 
@@ -93,13 +94,13 @@ const AppContent: React.FC = () => {
       <div className={`${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-[#F4F7FF] text-slate-900'} min-h-screen transition-colors duration-500 font-sans overflow-x-hidden relative`}>
         
         <nav className={`fixed top-0 w-full z-[100] border-b ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'} backdrop-blur-xl`}>
-          <div className="max-w-7xl mx-auto px-2 h-16 flex items-center justify-between gap-1">
-            <Link to="/" className={`flex flex-col items-center justify-center min-w-[50px] transition-all duration-300 ${isActive('/') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
+          <div className="max-w-[1440px] mx-auto px-2 sm:px-6 h-16 flex items-center justify-between gap-0 sm:gap-1">
+            <Link to="/" className={`flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] transition-all duration-300 ${isActive('/') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
               <HomeIcon className="w-5 h-5" strokeWidth={isActive('/') ? 3 : 2} />
               <span className={`text-[10px] uppercase mt-0.5 ${isActive('/') ? 'font-black' : 'font-medium'}`}>Home</span>
             </Link>
 
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex flex-col items-center justify-center min-w-[50px] text-slate-500 hover:text-blue-400 transition-all">
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] text-slate-500 hover:text-blue-400 transition-all">
               {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5" />}
               <span className="text-[10px] font-medium mt-0.5">{isDarkMode ? 'Day' : 'Night'}</span>
             </button>
@@ -107,7 +108,7 @@ const AppContent: React.FC = () => {
             {/* Tradara AI WhatsApp Style Direct Button in Top Navigation */}
             <button
               onClick={() => setIsAiOpen(!isAiOpen)}
-              className="flex flex-col items-center justify-center min-w-[50px] text-purple-500 hover:text-purple-400 transition-all relative"
+              className="flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] text-purple-500 hover:text-purple-400 transition-all relative"
             >
               <div className="p-1 rounded-full bg-gradient-to-tr from-purple-600 via-indigo-600 to-amber-400 text-white shadow-md shadow-purple-500/30">
                 <Sparkles className="w-4 h-4 animate-pulse" />
@@ -117,27 +118,27 @@ const AppContent: React.FC = () => {
 
             {token ? (
               <>
-                <Link to="/add-product" className={`flex flex-col items-center justify-center min-w-[50px] transition-all duration-300 ${isActive('/add-product') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
+                <Link to="/add-product" className={`flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] transition-all duration-300 ${isActive('/add-product') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
                   <PlusCircle className="w-5 h-5" strokeWidth={isActive('/add-product') ? 3 : 2} />
                   <span className={`text-[10px] uppercase mt-0.5 ${isActive('/add-product') ? 'font-black' : 'font-medium'}`}>Sell</span>
                 </Link>
-                <Link to="/dashboard" className={`flex flex-col items-center justify-center min-w-[50px] transition-all duration-300 ${isActive('/dashboard') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
+                <Link to="/dashboard" className={`flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] transition-all duration-300 ${isActive('/dashboard') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
                   <LayoutDashboard className="w-5 h-5" strokeWidth={isActive('/dashboard') ? 3 : 2} />
                   <span className={`text-[10px] uppercase mt-0.5 ${isActive('/dashboard') ? 'font-black' : 'font-medium'}`}>Menu</span>
                 </Link>
-                <button onClick={handleLogout} className="flex flex-col items-center justify-center min-w-[50px] text-red-500 hover:text-red-700 transition-all">
+                <button onClick={handleLogout} className="flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] text-red-500 hover:text-red-700 transition-all">
                   <LogOut className="w-5 h-5" />
                   <span className="text-[10px] font-medium mt-0.5">Exit</span>
                 </button>
               </>
             ) : (
-              <Link to="/login" className={`flex flex-col items-center justify-center min-w-[50px] transition-all duration-300 ${isActive('/login') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
+              <Link to="/login" className={`flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] transition-all duration-300 ${isActive('/login') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
                 <User className="w-5 h-5" strokeWidth={isActive('/login') ? 3 : 2} />
                 <span className={`text-[10px] uppercase mt-0.5 ${isActive('/login') ? 'font-black' : 'font-medium'}`}>Login</span>
               </Link>
             )}
             
-            <Link to="/cart" className={`relative flex flex-col items-center justify-center min-w-[50px] transition-all duration-300 ${isActive('/cart') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
+            <Link to="/cart" className={`relative flex flex-col items-center justify-center min-w-[44px] sm:min-w-[50px] transition-all duration-300 ${isActive('/cart') ? 'text-blue-600 scale-110' : 'text-slate-500 hover:text-blue-400'}`}>
               <ShoppingBag className="w-5 h-5" strokeWidth={isActive('/cart') ? 3 : 2} />
               <span className={`text-[10px] uppercase mt-0.5 ${isActive('/cart') ? 'font-black' : 'font-medium'}`}>Cart</span>
               {cart.length > 0 && (
@@ -149,7 +150,7 @@ const AppContent: React.FC = () => {
           </div>
         </nav>
 
-        <main className="pt-20 pb-12 px-4 max-w-7xl mx-auto">
+        <main className="w-full pt-16 pb-12 px-0 overflow-x-hidden">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login onLoginSuccess={handleAuthSuccess} />} /> 

@@ -1,14 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MapPin, ShoppingCart, ArrowLeft, Sparkles } from 'lucide-react';
-import { useCart } from '../context/CartContext';
+import { useCart } from '../context/useCart';
 import { AiNegotiationChatModal } from '../components/AiNegotiationChatModal';
+
+interface ProductRecord {
+  id?: string;
+  stockName?: string;
+  category?: string;
+  currency?: string;
+  price?: number;
+  city?: string;
+  area?: string;
+  description?: string;
+  images?: string[];
+}
 
 export const ProductDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToCart } = useCart();
-  const [product, setProduct] = useState<any>(null);
+  const [product, setProduct] = useState<ProductRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);

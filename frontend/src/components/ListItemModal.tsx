@@ -73,7 +73,7 @@ export const ListItemModal: React.FC<ListItemModalProps> = ({ onClose, onItemCre
 
       onItemCreated();
       onClose();
-    } catch (err) {
+    } catch {
       alert("Check your token or connection.");
     } finally {
       setLoading(false);

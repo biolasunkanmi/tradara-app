@@ -28,6 +28,15 @@ interface Message {
   };
 }
 
+interface NegotiationHistoryMessage {
+  id?: string;
+  sender: string;
+  message?: string;
+  content?: string;
+  createdAt?: string;
+  offerMade?: number;
+}
+
 interface AiNegotiationChatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -79,10 +88,10 @@ export const AiNegotiationChatModal: React.FC<AiNegotiationChatModalProps> = ({
         aiApiService.getNegotiationHistory(product.id, existingSession)
           .then((res) => {
             if (res.success && res.session && res.session.messages.length > 0) {
-              const formattedMsgs: Message[] = res.session.messages.map((m: any) => ({
+              const formattedMsgs: Message[] = res.session.messages.map((m: NegotiationHistoryMessage) => ({
                 id: m.id || String(Math.random()),
                 sender: m.sender === 'buyer' ? 'user' : m.sender === 'system' ? 'system' : 'ai',
-                text: m.message,
+                text: m.message ?? m.content ?? '',
                 timestamp: new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 offer: m.offerMade ? {
                   discountedPrice: m.offerMade,

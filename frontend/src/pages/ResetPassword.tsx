@@ -31,8 +31,16 @@ export const ResetPasswordPage = () => {
       await API.post('/auth/reset-password', { token, newPassword });
       alert("Success! Your password has been updated.");
       navigate('/login');
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Link expired or invalid.");
+    } catch (error: unknown) {
+      const message =
+        typeof error === 'object' && error !== null && 'response' in error &&
+        typeof error.response === 'object' && error.response !== null && 'data' in error.response &&
+        typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data &&
+        typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : 'Link expired or invalid.';
+
+      alert(message);
     } finally {
       setLoading(false);
     }

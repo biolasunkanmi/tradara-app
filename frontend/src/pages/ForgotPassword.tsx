@@ -20,10 +20,18 @@ export const ForgotPassword = () => {
         type: 'success', 
         text: 'Reset link sent! Please check your email inbox.' 
       });
-    } catch (err: any) {
-      setMessage({ 
-        type: 'error', 
-        text: err.response?.data?.message || 'Something went wrong. Try again.' 
+    } catch (error: unknown) {
+      const message =
+        typeof error === 'object' && error !== null && 'response' in error &&
+        typeof error.response === 'object' && error.response !== null && 'data' in error.response &&
+        typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data &&
+        typeof error.response.data.message === 'string'
+          ? error.response.data.message
+          : 'Something went wrong. Try again.';
+
+      setMessage({
+        type: 'error',
+        text: message,
       });
     } finally {
       setLoading(false);

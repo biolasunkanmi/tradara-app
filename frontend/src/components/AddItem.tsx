@@ -171,7 +171,7 @@ export const AddItem: React.FC = () => {
       }
 
       navigate('/dashboard');
-    } catch (err) {
+    } catch {
       setError("Upload failed. Check your network or server terminal.");
     } finally {
       setLoading(false);
